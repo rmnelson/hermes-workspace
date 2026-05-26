@@ -258,6 +258,61 @@ function historyContainsMessage(
   })
 }
 
+/** Stable identity for a message, used to detect what disappeared between two
+ * renders. Prefers durable IDs and falls back to a role+text+attachment
+ * fingerprint so messages that haven't been assigned an id still match. */
+function messageIdentity(message: ChatMessage): string {
+  const clientId = getMessageClientId(message)
+  if (clientId) return `c:${clientId}`
+  const id = extractMsgId(message)
+  if (id) return `i:${id}`
+  return `f:${message.role ?? ''}:${textFromMessage(message)
+    .trim()
+    .slice(0, 80)}:${getAttachmentSignature(message)}`
+}
+
+/** A turn is "in flight" while a message is actively streaming or an optimistic
+ * send is still unconfirmed — i.e. while the thinking bubble is up. */
+function hasInFlightTurn(messages: Array<ChatMessage>): boolean {
+  return messages.some((message) => {
+    const raw = message as Record<string, unknown>
+    return (
+      message.__streamingStatus === 'streaming' ||
+      normalizeMessageValue(raw.status) === 'sending' ||
+      normalizeMessageValue(raw.__optimisticId).length > 0
+    )
+  })
+}
+
+/**
+ * Guard against mid-stream history flicker. The history query refetches
+ * continuously while a turn streams (refetchInterval + refetchOnWindowFocus),
+ * and an individual refetch can momentarily return a list that omits messages
+ * already on screen, making them blink out and reappear on the next poll.
+ *
+ * While a turn is in flight, re-insert any previously-displayed message that is
+ * missing from the freshly-merged list (sorted back into timestamp order). Once
+ * nothing is in flight the next list is returned as-is, so legitimate edits and
+ * deletions still propagate.
+ */
+export function preserveMessagesDuringStream(
+  previous: Array<ChatMessage>,
+  next: Array<ChatMessage>,
+): Array<ChatMessage> {
+  if (previous.length === 0) return next
+  if (!hasInFlightTurn(previous) && !hasInFlightTurn(next)) return next
+
+  const nextIdentities = new Set(next.map(messageIdentity))
+  const missing = previous.filter(
+    (message) => !nextIdentities.has(messageIdentity(message)),
+  )
+  if (missing.length === 0) return next
+
+  return [...next, ...missing].sort(
+    (a, b) => getMessageTimestamp(a) - getMessageTimestamp(b),
+  )
+}
+
 export function useChatHistory({
   activeFriendlyId,
   activeSessionKey,
@@ -459,12 +514,24 @@ export function useChatHistory({
 
   const stableHistorySignatureRef = useRef('')
   const stableHistoryMessagesRef = useRef<Array<ChatMessage>>([])
+  const stableHistorySessionRef = useRef(sessionKeyForHistory)
   const historyMessages = useMemo(() => {
-    const messages = persistedPending
+    // Reset the retained list when switching sessions so the stream-flicker
+    // guard never bleeds messages from one conversation into another.
+    if (stableHistorySessionRef.current !== sessionKeyForHistory) {
+      stableHistorySessionRef.current = sessionKeyForHistory
+      stableHistorySignatureRef.current = ''
+      stableHistoryMessagesRef.current = []
+    }
+    const merged = persistedPending
       ? mergeOptimisticHistoryMessages(rawHistoryMessages, [
         persistedPending.optimisticMessage,
       ])
       : rawHistoryMessages
+    const messages = preserveMessagesDuringStream(
+      stableHistoryMessagesRef.current,
+      merged,
+    )
     const last = messages[messages.length - 1]
     const lastId =
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime safety
@@ -479,7 +546,7 @@ export function useChatHistory({
     stableHistorySignatureRef.current = signature
     stableHistoryMessagesRef.current = messages
     return messages
-  }, [persistedPending, rawHistoryMessages])
+  }, [persistedPending, rawHistoryMessages, sessionKeyForHistory])
 
   const showToolMessages = useChatSettingsStore(
     (s) => s.settings.showToolMessages,
