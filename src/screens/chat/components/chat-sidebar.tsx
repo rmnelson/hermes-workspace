@@ -47,7 +47,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { UserAvatar } from '@/components/avatars'
+import { AssistantAvatar, UserAvatar } from '@/components/avatars'
 import { SEARCH_MODAL_EVENTS, useSearchModal } from '@/hooks/use-search-modal'
 import {
   selectChatProfileAvatarDataUrl,
@@ -936,11 +936,7 @@ function ChatSidebarComponent({
                   'w-full pl-1.5 justify-start gap-2',
                 )}
               >
-                <img
-                  src="/claude-avatar.webp"
-                  alt="Hermes Agent"
-                  className="size-6 rounded-lg"
-                />
+                <AssistantAvatar size={24} style={{ borderRadius: '8px' }} />
                 <span
                   className="text-sm font-semibold tracking-tight"
                   style={{ color: 'var(--theme-text)' }}
