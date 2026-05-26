@@ -1699,7 +1699,14 @@ function ChatComposerComponent({
     (sttConfigQuery.data?.config?.stt as Record<string, unknown> | undefined) || {}
   const sttProvider =
     typeof sttConfig.provider === 'string' ? sttConfig.provider.trim() : 'local'
-  const useRemoteStt = sttProvider === 'groq' || sttProvider === 'openai'
+  // 'local' goes through /api/transcribe → faster-whisper bridge, so it
+  // behaves like a remote provider from the composer's POV: the mic button
+  // records via MediaRecorder and posts the blob, which means the mic also
+  // appears in browsers without built-in SpeechRecognition (Firefox, Chromium).
+  const useRemoteStt =
+    sttProvider === 'groq' ||
+    sttProvider === 'openai' ||
+    sttProvider === 'local'
 
   const appendTextToDraft = useCallback(
     (text: string, separator = ' ') => {
@@ -1710,8 +1717,13 @@ function ChatComposerComponent({
         persistDraft(next)
         return next
       })
+      // Voice transcription resolves asynchronously — by then focus may have
+      // moved off the textarea (user clicked away while waiting). Without
+      // this, the text appears but the cursor doesn't return, so it looks
+      // like nothing happened.
+      focusPrompt()
     },
-    [persistDraft],
+    [focusPrompt, persistDraft],
   )
 
   const transcribeVoiceBlob = useCallback(

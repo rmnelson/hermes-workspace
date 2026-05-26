@@ -6,19 +6,33 @@ const DEFAULT_GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
 const DEFAULT_GROQ_MODEL = 'whisper-large-v3-turbo'
 const DEFAULT_OPENAI_MODEL = 'whisper-1'
+const DEFAULT_LOCAL_MODEL = 'base'
 
 type RecordLike = Record<string, unknown>
 
 type SupportedRemoteProvider = 'groq' | 'openai'
 
-export type ResolvedTranscriptionTarget = {
+export type ResolvedRemoteTranscriptionTarget = {
   ok: true
+  kind: 'remote'
   provider: SupportedRemoteProvider
   model: string
   language?: string
   apiKey: string
   baseUrl: string
 }
+
+export type ResolvedLocalTranscriptionTarget = {
+  ok: true
+  kind: 'local'
+  provider: 'local'
+  model: string
+  language?: string
+}
+
+export type ResolvedTranscriptionTarget =
+  | ResolvedRemoteTranscriptionTarget
+  | ResolvedLocalTranscriptionTarget
 
 export type ResolvedTranscriptionError = {
   ok: false
@@ -76,6 +90,17 @@ export function resolveTranscriptionTarget(
   const provider = readString(stt.provider) || 'local'
   const language = readString(stt.language) || undefined
 
+  if (provider === 'local') {
+    const local = readRecord(stt.local)
+    return {
+      ok: true,
+      kind: 'local',
+      provider: 'local',
+      model: readString(local.model) || DEFAULT_LOCAL_MODEL,
+      language: readString(local.language) || language,
+    }
+  }
+
   if (provider === 'groq') {
     const groq = readRecord(stt.groq)
     const apiKey =
@@ -85,6 +110,7 @@ export function resolveTranscriptionTarget(
     }
     return {
       ok: true,
+      kind: 'remote',
       provider: 'groq',
       model: readString(groq.model) || DEFAULT_GROQ_MODEL,
       language,
@@ -111,6 +137,7 @@ export function resolveTranscriptionTarget(
     }
     return {
       ok: true,
+      kind: 'remote',
       provider: 'openai',
       model:
         readString(openai.model) ||
@@ -130,6 +157,68 @@ export function resolveTranscriptionTarget(
     ok: false,
     error: `Configured STT provider "${provider}" is not available through Workspace remote transcription.`,
   }
+}
+
+// Runs the local faster-whisper bridge script and returns the transcript.
+// The script always exits 0 and prints a single JSON object — we re-raise
+// any {ok:false,error} payload as an Error so the route handler can surface it.
+export async function runLocalTranscription(
+  audioPath: string,
+  target: ResolvedLocalTranscriptionTarget,
+): Promise<string> {
+  const { spawn } = await import('node:child_process')
+  const { join } = await import('node:path')
+
+  const pythonPath =
+    process.env.HERMES_PYTHON ||
+    join(homedir(), '.hermes', 'hermes-agent', 'venv', 'bin', 'python')
+  const scriptPath = join(process.cwd(), 'scripts', 'transcribe-local.py')
+
+  const args = [scriptPath, audioPath, '--model', target.model]
+  if (target.language) args.push('--language', target.language)
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(pythonPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    child.on('error', (err) => {
+      reject(
+        new Error(
+          `Failed to spawn ${pythonPath}: ${err.message}. ` +
+            'Set HERMES_PYTHON to a python interpreter with faster-whisper installed.',
+        ),
+      )
+    })
+    child.on('close', () => {
+      const lastLine = stdout.trim().split('\n').pop() || ''
+      if (!lastLine) {
+        reject(
+          new Error(
+            stderr.trim() || 'Local transcription returned no output.',
+          ),
+        )
+        return
+      }
+      let parsed: { ok?: boolean; text?: string; error?: string }
+      try {
+        parsed = JSON.parse(lastLine)
+      } catch {
+        reject(new Error(`Local transcription emitted invalid JSON: ${lastLine}`))
+        return
+      }
+      if (!parsed.ok) {
+        reject(new Error(parsed.error || 'Local transcription failed.'))
+        return
+      }
+      resolve(typeof parsed.text === 'string' ? parsed.text : '')
+    })
+  })
 }
 
 export function extractTranscriptionText(payload: unknown): string {

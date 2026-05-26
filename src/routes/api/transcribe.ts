@@ -11,6 +11,7 @@ import { getConfig } from '../../server/claude-api'
 import {
   extractTranscriptionText,
   resolveTranscriptionTarget,
+  runLocalTranscription,
 } from '../../server/stt-transcription'
 
 const MAX_AUDIO_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -56,6 +57,43 @@ export const Route = createFileRoute('/api/transcribe')({
           const target = resolveTranscriptionTarget(config)
           if (target.ok === false) {
             return json({ ok: false, error: target.error }, { status: 400 })
+          }
+
+          if (target.kind === 'local') {
+            const { tmpdir } = await import('node:os')
+            const { writeFile, unlink } = await import('node:fs/promises')
+            const { join } = await import('node:path')
+            const ext = file.name?.includes('.')
+              ? file.name.slice(file.name.lastIndexOf('.'))
+              : '.webm'
+            const tmpPath = join(
+              tmpdir(),
+              `hermes-stt-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`,
+            )
+            await writeFile(tmpPath, Buffer.from(await file.arrayBuffer()))
+            try {
+              const text = await runLocalTranscription(tmpPath, target)
+              if (!text.trim()) {
+                return json(
+                  { ok: false, error: 'Transcription returned no text.' },
+                  { status: 502 },
+                )
+              }
+              return json({
+                ok: true,
+                provider: target.provider,
+                model: target.model,
+                language: target.language || null,
+                text,
+              })
+            } catch (err) {
+              return json(
+                { ok: false, error: safeErrorMessage(err) },
+                { status: 500 },
+              )
+            } finally {
+              void unlink(tmpPath).catch(() => {})
+            }
           }
 
           const upstreamForm = new FormData()
