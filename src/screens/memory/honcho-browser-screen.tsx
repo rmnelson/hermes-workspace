@@ -110,11 +110,19 @@ function PeersTab() {
     enabled: Boolean(selected),
     queryFn: () =>
       fetchJson<{
-        peer: HonchoPeer
+        peerId: string
         card: unknown
         representation: unknown
+        cardError: string | null
+        representationError: string | null
       }>(`/api/honcho/peers?id=${encodeURIComponent(selected!)}`),
   })
+
+  // Honcho has no GET /peers/{id} — pull metadata from the list cache.
+  const selectedPeer = useMemo(
+    () => listQuery.data?.peers.find((p) => p.id === selected) ?? null,
+    [listQuery.data, selected],
+  )
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] gap-3">
@@ -186,11 +194,13 @@ function PeersTab() {
                     Peer
                   </h3>
                   <p className="mt-1 font-mono text-sm">
-                    {detailQuery.data.peer.id}
+                    {selectedPeer?.id ?? detailQuery.data.peerId}
                   </p>
-                  <p className="text-[11px] text-primary-400">
-                    Created {formatTimestamp(detailQuery.data.peer.created_at)}
-                  </p>
+                  {selectedPeer?.created_at ? (
+                    <p className="text-[11px] text-primary-400">
+                      Created {formatTimestamp(selectedPeer.created_at)}
+                    </p>
+                  ) : null}
                 </section>
                 <section>
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-primary-500">
@@ -246,12 +256,20 @@ function SessionsTab() {
     enabled: Boolean(selected),
     queryFn: () =>
       fetchJson<{
-        session: HonchoSession
+        sessionId: string
         messages: Array<Record<string, unknown>>
         messagesTotal: number
         summaries: unknown
+        messagesError: string | null
+        summariesError: string | null
       }>(`/api/honcho/sessions?id=${encodeURIComponent(selected!)}`),
   })
+
+  // Honcho has no GET /sessions/{id} — pull metadata from the list cache.
+  const selectedSession = useMemo(
+    () => listQuery.data?.sessions.find((s) => s.id === selected) ?? null,
+    [listQuery.data, selected],
+  )
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] gap-3">
@@ -323,11 +341,12 @@ function SessionsTab() {
                     Session
                   </h3>
                   <p className="mt-1 font-mono text-sm">
-                    {detailQuery.data.session.id}
+                    {selectedSession?.id ?? detailQuery.data.sessionId}
                   </p>
                   <p className="text-[11px] text-primary-400">
-                    Created{' '}
-                    {formatTimestamp(detailQuery.data.session.created_at)} ·{' '}
+                    {selectedSession?.created_at ? (
+                      <>Created {formatTimestamp(selectedSession.created_at)} · </>
+                    ) : null}
                     {detailQuery.data.messagesTotal} messages
                   </p>
                 </section>

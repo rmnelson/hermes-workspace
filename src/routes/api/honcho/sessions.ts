@@ -37,10 +37,10 @@ export const Route = createFileRoute('/api/honcho/sessions')({
         const workspaceId = url.searchParams.get('workspace')?.trim() || config.workspaceId
 
         if (sessionId) {
-          const [sessionRes, messagesRes, summariesRes] = await Promise.all([
-            fetchHoncho<HonchoSession>(
-              `/v3/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
-            ),
+          // Honcho has no GET /sessions/{id} — only DELETE/PUT. Session
+          // metadata comes from the /sessions/list response (cached on the
+          // client). This detail call returns only the sub-resources.
+          const [messagesRes, summariesRes] = await Promise.all([
             fetchHoncho<HonchoPaged<unknown>>(
               `/v3/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/messages/list`,
               { method: 'POST', body: {} },
@@ -49,15 +49,9 @@ export const Route = createFileRoute('/api/honcho/sessions')({
               `/v3/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/summaries`,
             ),
           ])
-          if (!sessionRes.ok) {
-            return json(
-              { ok: false, error: sessionRes.error },
-              { status: sessionRes.status },
-            )
-          }
           return json({
             ok: true,
-            session: sessionRes.data,
+            sessionId,
             messages: messagesRes.ok ? (messagesRes.data.items ?? []) : [],
             messagesTotal: messagesRes.ok ? (messagesRes.data.total ?? 0) : 0,
             summaries: summariesRes.ok ? summariesRes.data : null,

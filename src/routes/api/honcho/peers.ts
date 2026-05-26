@@ -22,7 +22,9 @@ export const Route = createFileRoute('/api/honcho/peers')({
   server: {
     handlers: {
       // GET /api/honcho/peers           — list all peers in the default workspace
-      // GET /api/honcho/peers?id=<peerId> — detail (peer + card + representation)
+      // GET /api/honcho/peers?id=<peerId> — detail (card + representation only;
+      //                                    peer metadata comes from the list cache
+      //                                    since Honcho has no GET /peers/{id})
       GET: async ({ request }) => {
         if (!isAuthenticated(request)) {
           return json({ ok: false, error: 'Unauthorized' }, { status: 401 })
@@ -37,23 +39,22 @@ export const Route = createFileRoute('/api/honcho/peers')({
         const workspaceId = url.searchParams.get('workspace')?.trim() || config.workspaceId
 
         if (peerId) {
-          const [peerRes, cardRes, repRes] = await Promise.all([
-            fetchHoncho<HonchoPeer>(
-              `/v3/workspaces/${encodeURIComponent(workspaceId)}/peers/${encodeURIComponent(peerId)}`,
-            ),
+          // Honcho has no GET /peers/{id} — only PUT. Peer metadata comes
+          // from the /peers/list response (cached on the client). The
+          // detail call returns only card + representation. Note:
+          // /representation is POST (with optional body), not GET.
+          const [cardRes, repRes] = await Promise.all([
             fetchHoncho<unknown>(
               `/v3/workspaces/${encodeURIComponent(workspaceId)}/peers/${encodeURIComponent(peerId)}/card`,
             ),
             fetchHoncho<unknown>(
               `/v3/workspaces/${encodeURIComponent(workspaceId)}/peers/${encodeURIComponent(peerId)}/representation`,
+              { method: 'POST', body: {} },
             ),
           ])
-          if (!peerRes.ok) {
-            return json({ ok: false, error: peerRes.error }, { status: peerRes.status })
-          }
           return json({
             ok: true,
-            peer: peerRes.data,
+            peerId,
             card: cardRes.ok ? cardRes.data : null,
             representation: repRes.ok ? repRes.data : null,
             cardError: cardRes.ok ? null : cardRes.error,
