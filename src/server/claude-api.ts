@@ -24,6 +24,7 @@ import {
   searchSessions as searchDashboardSessions,
   updateSession as updateDashboardSession,
 } from './claude-dashboard-api'
+import { stripWorkspaceDirective } from '../lib/workspace-message-scope'
 
 const _authHeaders = (): Record<string, string> =>
   BEARER_TOKEN ? { Authorization: `Bearer ${BEARER_TOKEN}` } : {}
@@ -308,27 +309,17 @@ export function toChatMessage(
   }
 }
 
-// Hermes injects environmental context tags into the first turn of every
-// chat (e.g. <workspace_context active="true" name="Home" path="/..." />)
-// so the model has session-level context. When the gateway falls back to
-// `session.preview` because no LLM-generated title exists (typical for
-// local-model sessions that don't run a titler pass), the raw preview is
-// nothing but that prefix tag truncated to ~80 chars. Strip any leading
-// self-closing context tag + the blank line that follows it so the
-// fallback title comes from real conversation text.
-const CONTEXT_PREFIX_RE = /^\s*<\w*context\b[^>]*\/?>\s*/i
-
+// Hermes injects an environmental context tag into the first turn of
+// every chat (<workspace_context active="true" ... />) so the model has
+// session-level context. When the gateway falls back to `session.preview`
+// because no LLM-generated title exists, the preview is just that tag
+// truncated to 63 chars by hermes_state.py's SUBSTR — which cuts mid-
+// attribute, leaving no closing `>` to anchor on. We use the shared
+// stripWorkspaceDirective which handles both complete and truncated tags.
 function stripContextPrefix(value: string | null | undefined): string | undefined {
   if (!value) return undefined
-  let next = value
-  // Iterate in case there are multiple stacked context tags.
-  for (let i = 0; i < 4; i += 1) {
-    const stripped = next.replace(CONTEXT_PREFIX_RE, '')
-    if (stripped === next) break
-    next = stripped
-  }
-  const trimmed = next.trim()
-  return trimmed.length > 0 ? trimmed : undefined
+  const stripped = stripWorkspaceDirective(value).trim()
+  return stripped.length > 0 ? stripped : undefined
 }
 
 /** Convert a ClaudeSession to the session summary format the frontend expects */
