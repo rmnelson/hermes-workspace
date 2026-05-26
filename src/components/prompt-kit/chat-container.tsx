@@ -69,6 +69,19 @@ export function nextStickToBottom({
   return current
 }
 
+/**
+ * CSS `overflow-anchor` value for the scroll viewport given the follow state.
+ *
+ * While following we disable scroll anchoring so our scroll-to-bottom always
+ * reaches the very end. While the user is scrolled up reading, we enable it so
+ * the browser keeps their view stationary as the streaming message grows and
+ * markdown reflows above the fold — otherwise the reading position jumps when
+ * new data arrives.
+ */
+export function overflowAnchorForFollow(following: boolean): 'none' | 'auto' {
+  return following ? 'none' : 'auto'
+}
+
 function ChatContainerRoot({
   children,
   overlay,
@@ -81,6 +94,14 @@ function ChatContainerRoot({
   const scrollRef = React.useRef<HTMLDivElement | null>(null)
   const stickToBottomRef = React.useRef(stickToBottom)
   const lastScrollTopRef = React.useRef(0)
+  // Mirror of stickToBottomRef for rendering (drives overflow-anchor). The ref
+  // is the synchronous source of truth; this state only re-renders when follow
+  // actually flips, so it stays cheap during scroll/streaming.
+  const [following, setFollowing] = React.useState(stickToBottom)
+  const setStick = React.useCallback((next: boolean) => {
+    stickToBottomRef.current = next
+    setFollowing((prev) => (prev === next ? prev : next))
+  }, [])
   // Timestamp of the most recent genuine user input gesture. A scroll event that
   // fires within USER_GESTURE_WINDOW_MS of a gesture is user-initiated; all other
   // scroll events are programmatic (our own scrollTo / streaming re-anchor) and
@@ -91,10 +112,10 @@ function ChatContainerRoot({
     (behavior: ScrollBehavior = 'auto') => {
       const element = scrollRef.current
       if (!element) return
-      stickToBottomRef.current = true
+      setStick(true)
       element.scrollTo({ top: element.scrollHeight, behavior })
     },
-    [],
+    [setStick],
   )
 
   React.useImperativeHandle(
@@ -102,10 +123,10 @@ function ChatContainerRoot({
     () => ({
       scrollToBottom,
       releaseFollow: () => {
-        stickToBottomRef.current = false
+        setStick(false)
       },
     }),
-    [scrollToBottom],
+    [scrollToBottom, setStick],
   )
 
   // Record genuine user input gestures so the scroll handler can tell them apart
@@ -155,13 +176,15 @@ function ChatContainerRoot({
       const isUserGesture =
         Date.now() - lastGestureRef.current < USER_GESTURE_WINDOW_MS
 
-      stickToBottomRef.current = nextStickToBottom({
-        isUserGesture,
-        distanceFromBottom,
-        scrolledUp,
-        threshold: NEAR_BOTTOM_THRESHOLD,
-        current: stickToBottomRef.current,
-      })
+      setStick(
+        nextStickToBottom({
+          isUserGesture,
+          distanceFromBottom,
+          scrolledUp,
+          threshold: NEAR_BOTTOM_THRESHOLD,
+          current: stickToBottomRef.current,
+        }),
+      )
 
       onUserScroll?.({
         scrollTop: element.scrollTop,
@@ -172,7 +195,7 @@ function ChatContainerRoot({
 
     element.addEventListener('scroll', handleScroll, { passive: true })
     return () => element.removeEventListener('scroll', handleScroll)
-  }, [onUserScroll])
+  }, [onUserScroll, setStick])
 
   // ResizeObserver: re-anchor to bottom when content expands
   React.useLayoutEffect(() => {
@@ -231,7 +254,7 @@ function ChatContainerRoot({
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
-        style={{ overflowAnchor: 'none' }}
+        style={{ overflowAnchor: overflowAnchorForFollow(following) }}
         data-chat-scroll-viewport
         {...props}
       >

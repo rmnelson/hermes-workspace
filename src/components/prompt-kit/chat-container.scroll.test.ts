@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { nextStickToBottom } from './chat-container'
+import { nextStickToBottom, overflowAnchorForFollow } from './chat-container'
 
 const THRESHOLD = 200
+
+describe('overflowAnchorForFollow', () => {
+  it('disables scroll anchoring while following so scroll-to-bottom can reach the end', () => {
+    expect(overflowAnchorForFollow(true)).toBe('none')
+  })
+
+  it('enables scroll anchoring when scrolled up so the reading position stays put as content grows', () => {
+    expect(overflowAnchorForFollow(false)).toBe('auto')
+  })
+})
 
 describe('nextStickToBottom', () => {
   it('does not change follow state on a programmatic scroll (the core bug)', () => {
