@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Cancel01Icon } from '@hugeicons/core-free-icons'
 import { writeTextToClipboard } from '@/lib/clipboard'
+import { AssistantAvatar } from '@/components/avatars'
 
 const STORAGE_KEY_SEEN = 'claude-mobile-setup-seen'
 
@@ -220,11 +221,7 @@ export function MobileSetupModal({ isOpen, onClose }: MobileSetupModalProps) {
         </button>
 
         <div className="mb-4 flex items-center gap-3 pr-10">
-          <img
-            src="/claude-avatar.webp"
-            alt="Hermes Agent"
-            className="size-9 rounded-xl"
-          />
+          <AssistantAvatar size={36} style={{ borderRadius: '12px' }} />
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-white">Mobile Setup</h2>
             <div className="mt-1 flex items-center gap-1.5">
