@@ -21,6 +21,7 @@ import {
   ChatContainerRoot,
   ChatContainerScrollAnchor,
 } from '@/components/prompt-kit/chat-container'
+import type { ChatContainerApi } from '@/components/prompt-kit/chat-container'
 import { AssistantAvatar } from '@/components/avatars'
 import { cn } from '@/lib/utils'
 import { hapticTap } from '@/lib/haptics'
@@ -594,13 +595,14 @@ function ChatMessageListComponent({
   const lastUserRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const prevSessionKeyRef = useRef<string | undefined>(sessionKey)
-  const stickToBottomRef = useRef(true)
+  // Follow-the-bottom state is owned by ChatContainerRoot; we drive explicit
+  // scroll/follow commands through this imperative handle.
+  const chatScrollApiRef = useRef<ChatContainerApi | null>(null)
   const messageSignatureRef = useRef<Map<string, string>>(new Map())
   const initialRenderRef = useRef(true)
   const streamingTargetsClearRef = useRef<(() => void) | null>(null)
   const [streamingCleared, setStreamingCleared] = useState(0)
   streamingTargetsClearRef.current = () => setStreamingCleared((c) => c + 1)
-  const lastScrollTopRef = useRef(0)
   const isNearBottomRef = useRef(true)
   const [isNearBottom, setIsNearBottom] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -660,31 +662,18 @@ function ChatMessageListComponent({
     scrollHeight: number
     clientHeight: number
   }) {
+    // Position reporting only — drives scroll-to-bottom button visibility.
+    // Follow-the-bottom state itself is owned by ChatContainerRoot.
     const distanceFromBottom =
       metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight
-    const nearBottom = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD
-    const wasScrollingUp = metrics.scrollTop < lastScrollTopRef.current - 5
-    lastScrollTopRef.current = metrics.scrollTop
-
-    if (wasScrollingUp && !nearBottom) {
-      stickToBottomRef.current = false
-      isNearBottomRef.current = false
-    } else if (nearBottom) {
-      stickToBottomRef.current = true
-      isNearBottomRef.current = true
-    }
+    isNearBottomRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD
   }, [])
 
-  // Simple scroll to bottom — find viewport and scroll
+  // Scroll to bottom + re-engage follow, via ChatContainerRoot's handle.
   const scrollToBottom = useCallback(function scrollToBottom(
     behavior: ScrollBehavior = 'auto',
   ) {
-    const anchor = anchorRef.current
-    if (!anchor) return
-    const viewport = anchor.closest('[data-chat-scroll-viewport]')
-    if (viewport) {
-      viewport.scrollTo({ top: viewport.scrollHeight, behavior })
-    }
+    chatScrollApiRef.current?.scrollToBottom(behavior)
   }, [])
 
   // Filter messages — toolResult handled by grouping into assistant bubble below
@@ -939,7 +928,7 @@ function ChatMessageListComponent({
     const target = viewport.querySelector(selector)
     if (!target) return
 
-    stickToBottomRef.current = false
+    chatScrollApiRef.current?.releaseFollow()
     isNearBottomRef.current = false
     setIsNearBottom(false)
     target.scrollIntoView({ behavior, block: 'center', inline: 'nearest' })
@@ -1341,42 +1330,29 @@ function ChatMessageListComponent({
     return () => window.clearInterval(timer)
   }, [])
 
-  // Simple: scroll to bottom when messages change and we should stick
+  // Re-engage follow + scroll to bottom on session change. Streaming growth is
+  // followed by ChatContainerRoot's ResizeObserver while follow is engaged, so
+  // we no longer scroll per streaming token here — that fought the user trying
+  // to scroll up and read while the agent was still responding.
   useEffect(() => {
     if (loading) return
-    let frameId: number | null = null
     const sessionChanged = prevSessionKeyRef.current !== sessionKey
     prevSessionKeyRef.current = sessionKey
+    if (!sessionChanged) return
+    const frameId = window.requestAnimationFrame(() => scrollToBottom('auto'))
+    return () => window.cancelAnimationFrame(frameId)
+  }, [loading, sessionKey, scrollToBottom])
 
-    // Always scroll on session change (instant)
-    if (sessionChanged) {
-      stickToBottomRef.current = true
-      frameId = window.requestAnimationFrame(() => scrollToBottom('auto'))
-      return () => {
-        if (frameId !== null) window.cancelAnimationFrame(frameId)
-      }
-    }
-
-    // Scroll to bottom only if the user is already near the bottom
-    if (isNearBottomRef.current) {
-      // Use smooth scroll only when user is near bottom (<200px) and new messages arrive;
-      // use instant scroll during streaming to avoid choppiness.
-      const behavior: ScrollBehavior =
-        isNearBottomRef.current && !isStreaming ? 'smooth' : 'auto'
-      frameId = window.requestAnimationFrame(() => scrollToBottom(behavior))
-    }
-
-    return () => {
-      if (frameId !== null) window.cancelAnimationFrame(frameId)
-    }
-  }, [
-    loading,
-    visibleEntries.length,
-    isStreaming,
-    sessionKey,
-    scrollToBottom,
-    streamingText,
-  ])
+  // Re-engage follow when the user sends a message, so the incoming response is
+  // tracked even if they had scrolled up to read during the previous turn.
+  const prevSendingRef = useRef(sending)
+  useEffect(() => {
+    const justStartedSending = sending && !prevSendingRef.current
+    prevSendingRef.current = sending
+    if (!justStartedSending) return
+    const frameId = window.requestAnimationFrame(() => scrollToBottom('auto'))
+    return () => window.cancelAnimationFrame(frameId)
+  }, [sending, scrollToBottom])
 
   useEffect(() => {
     setExpandAllToolSections(false)
@@ -1507,7 +1483,6 @@ function ChatMessageListComponent({
 
   const handleScrollToBottom = useCallback(
     function handleScrollToBottom() {
-      stickToBottomRef.current = true
       isNearBottomRef.current = true
       setIsNearBottom(true)
       setUnreadCount(0)
@@ -1553,7 +1528,7 @@ function ChatMessageListComponent({
     <>
       <ChatContainerRoot
         className="h-full flex-1 min-h-0"
-        stickToBottom={stickToBottomRef.current}
+        apiRef={chatScrollApiRef}
         onUserScroll={handleUserScroll}
         overlay={scrollToBottomOverlay}
       >
