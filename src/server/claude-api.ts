@@ -308,20 +308,45 @@ export function toChatMessage(
   }
 }
 
+// Hermes injects environmental context tags into the first turn of every
+// chat (e.g. <workspace_context active="true" name="Home" path="/..." />)
+// so the model has session-level context. When the gateway falls back to
+// `session.preview` because no LLM-generated title exists (typical for
+// local-model sessions that don't run a titler pass), the raw preview is
+// nothing but that prefix tag truncated to ~80 chars. Strip any leading
+// self-closing context tag + the blank line that follows it so the
+// fallback title comes from real conversation text.
+const CONTEXT_PREFIX_RE = /^\s*<\w*context\b[^>]*\/?>\s*/i
+
+function stripContextPrefix(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  let next = value
+  // Iterate in case there are multiple stacked context tags.
+  for (let i = 0; i < 4; i += 1) {
+    const stripped = next.replace(CONTEXT_PREFIX_RE, '')
+    if (stripped === next) break
+    next = stripped
+  }
+  const trimmed = next.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
 /** Convert a ClaudeSession to the session summary format the frontend expects */
 export function toSessionSummary(
   session: ClaudeSession,
 ): Record<string, unknown> {
+  const cleanTitle = stripContextPrefix(session.title)
+  const cleanPreview = stripContextPrefix(session.preview)
   return {
     key: session.id,
     friendlyId: session.id,
     kind: 'chat',
     status: session.ended_at ? 'ended' : 'idle',
     model: session.model || '',
-    label: session.title || undefined,
-    title: session.title || undefined,
-    derivedTitle: session.title || session.preview || undefined,
-    preview: session.preview || undefined,
+    label: cleanTitle,
+    title: cleanTitle,
+    derivedTitle: cleanTitle || cleanPreview,
+    preview: cleanPreview,
     tokenCount: (session.input_tokens ?? 0) + (session.output_tokens ?? 0),
     totalTokens: (session.input_tokens ?? 0) + (session.output_tokens ?? 0),
     message_count: session.message_count ?? 0,
