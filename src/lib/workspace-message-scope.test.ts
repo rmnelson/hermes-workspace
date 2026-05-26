@@ -50,4 +50,25 @@ describe('buildWorkspaceScopedTextMessage', () => {
       ),
     ).toBe('Run the tests')
   })
+
+  it('strips a truncated workspace directive from session previews', () => {
+    // hermes_state.py builds previews with SUBSTR(content, 1, 63), which
+    // cuts the directive mid-attribute. The strip must not require a
+    // closing `>` or it leaves the user with a sidebar full of
+    // <workspace_context active="true" name="Home" path="/home/use
+    expect(
+      stripWorkspaceDirective(
+        '<workspace_context active="true" name="Home" path="/home/use',
+      ),
+    ).toBe('')
+  })
+
+  it('leaves messages without a context directive untouched', () => {
+    expect(stripWorkspaceDirective('plain user message')).toBe(
+      'plain user message',
+    )
+    expect(stripWorkspaceDirective('What is the best web interface?')).toBe(
+      'What is the best web interface?',
+    )
+  })
 })
