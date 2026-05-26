@@ -1,5 +1,6 @@
 import { Suspense, lazy, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import BackendUnavailableState from '@/components/backend-unavailable-state'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs'
 import { useFeatureAvailable } from '@/hooks/use-feature-available'
@@ -16,11 +17,33 @@ const KnowledgeBrowserScreen = lazy(async () => {
   return { default: module.KnowledgeBrowserScreen }
 })
 
+const HonchoBrowserScreen = lazy(async () => {
+  const module = await import('@/screens/memory/honcho-browser-screen')
+  return { default: module.HonchoBrowserScreen }
+})
+
+type MemoryTab = 'memory' | 'knowledge' | 'honcho'
+
 export const Route = createFileRoute('/memory')({
   ssr: false,
   component: function MemoryRoute() {
-    const [tab, setTab] = useState<'memory' | 'knowledge'>('memory')
+    const [tab, setTab] = useState<MemoryTab>('memory')
     const memoryAvailable = useFeatureAvailable('memory')
+
+    // Honcho tab appears only when the workspace can see a configured
+    // Honcho install. Cheap probe — the route returns {enabled:false}
+    // when there's no honcho.json, no spinner needed.
+    const honchoQuery = useQuery({
+      queryKey: ['honcho', 'enabled'],
+      queryFn: async () => {
+        const res = await fetch('/api/honcho/health')
+        if (!res.ok) return { enabled: false }
+        return (await res.json()) as { enabled?: boolean }
+      },
+      staleTime: 60_000,
+      retry: false,
+    })
+    const honchoEnabled = Boolean(honchoQuery.data?.enabled)
 
     usePageTitle('Memory')
 
@@ -28,7 +51,7 @@ export const Route = createFileRoute('/memory')({
       <div className="flex h-full min-h-0 flex-col">
         <Tabs
           value={tab}
-          onValueChange={(value) => setTab(value as 'memory' | 'knowledge')}
+          onValueChange={(value) => setTab(value as MemoryTab)}
           className="h-full min-h-0 gap-0"
         >
           <div className="border-b border-primary-200 px-3 pt-3 dark:border-neutral-800 md:px-4 md:pt-4">
@@ -38,6 +61,9 @@ export const Route = createFileRoute('/memory')({
             >
               <TabsTab value="memory">Memory</TabsTab>
               <TabsTab value="knowledge">Knowledge</TabsTab>
+              {honchoEnabled ? (
+                <TabsTab value="honcho">Honcho</TabsTab>
+              ) : null}
             </TabsList>
           </div>
 
@@ -71,6 +97,20 @@ export const Route = createFileRoute('/memory')({
               </Suspense>
             ) : null}
           </TabsPanel>
+
+          {honchoEnabled ? (
+            <TabsPanel value="honcho" className="min-h-0 flex-1">
+              {tab === 'honcho' ? (
+                <Suspense
+                  fallback={
+                    <RouteLoadingState label="Loading Honcho browser..." />
+                  }
+                >
+                  <HonchoBrowserScreen />
+                </Suspense>
+              ) : null}
+            </TabsPanel>
+          ) : null}
         </Tabs>
       </div>
     )

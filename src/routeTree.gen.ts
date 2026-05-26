@@ -147,6 +147,11 @@ import { Route as ApiKnowledgeReadRouteImport } from './routes/api/knowledge/rea
 import { Route as ApiKnowledgeListRouteImport } from './routes/api/knowledge/list'
 import { Route as ApiKnowledgeGraphRouteImport } from './routes/api/knowledge/graph'
 import { Route as ApiKnowledgeConfigRouteImport } from './routes/api/knowledge/config'
+import { Route as ApiHonchoSessionsRouteImport } from './routes/api/honcho/sessions'
+import { Route as ApiHonchoSearchRouteImport } from './routes/api/honcho/search'
+import { Route as ApiHonchoPeersRouteImport } from './routes/api/honcho/peers'
+import { Route as ApiHonchoHealthRouteImport } from './routes/api/honcho/health'
+import { Route as ApiHonchoConclusionsRouteImport } from './routes/api/honcho/conclusions'
 import { Route as ApiHermesworldReservationsRouteImport } from './routes/api/hermesworld/reservations'
 import { Route as ApiHermesTasksTaskIdRouteImport } from './routes/api/hermes-tasks.$taskId'
 import { Route as ApiDashboardOverviewRouteImport } from './routes/api/dashboard/overview'
@@ -852,6 +857,31 @@ const ApiKnowledgeConfigRoute = ApiKnowledgeConfigRouteImport.update({
   path: '/api/knowledge/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHonchoSessionsRoute = ApiHonchoSessionsRouteImport.update({
+  id: '/api/honcho/sessions',
+  path: '/api/honcho/sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHonchoSearchRoute = ApiHonchoSearchRouteImport.update({
+  id: '/api/honcho/search',
+  path: '/api/honcho/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHonchoPeersRoute = ApiHonchoPeersRouteImport.update({
+  id: '/api/honcho/peers',
+  path: '/api/honcho/peers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHonchoHealthRoute = ApiHonchoHealthRouteImport.update({
+  id: '/api/honcho/health',
+  path: '/api/honcho/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHonchoConclusionsRoute = ApiHonchoConclusionsRouteImport.update({
+  id: '/api/honcho/conclusions',
+  path: '/api/honcho/conclusions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHermesworldReservationsRoute =
   ApiHermesworldReservationsRouteImport.update({
     id: '/api/hermesworld/reservations',
@@ -1031,6 +1061,11 @@ export interface FileRoutesByFullPath {
   '/api/dashboard/overview': typeof ApiDashboardOverviewRoute
   '/api/hermes-tasks/$taskId': typeof ApiHermesTasksTaskIdRoute
   '/api/hermesworld/reservations': typeof ApiHermesworldReservationsRouteWithChildren
+  '/api/honcho/conclusions': typeof ApiHonchoConclusionsRoute
+  '/api/honcho/health': typeof ApiHonchoHealthRoute
+  '/api/honcho/peers': typeof ApiHonchoPeersRoute
+  '/api/honcho/search': typeof ApiHonchoSearchRoute
+  '/api/honcho/sessions': typeof ApiHonchoSessionsRoute
   '/api/knowledge/config': typeof ApiKnowledgeConfigRoute
   '/api/knowledge/graph': typeof ApiKnowledgeGraphRoute
   '/api/knowledge/list': typeof ApiKnowledgeListRoute
@@ -1183,6 +1218,11 @@ export interface FileRoutesByTo {
   '/api/dashboard/overview': typeof ApiDashboardOverviewRoute
   '/api/hermes-tasks/$taskId': typeof ApiHermesTasksTaskIdRoute
   '/api/hermesworld/reservations': typeof ApiHermesworldReservationsRouteWithChildren
+  '/api/honcho/conclusions': typeof ApiHonchoConclusionsRoute
+  '/api/honcho/health': typeof ApiHonchoHealthRoute
+  '/api/honcho/peers': typeof ApiHonchoPeersRoute
+  '/api/honcho/search': typeof ApiHonchoSearchRoute
+  '/api/honcho/sessions': typeof ApiHonchoSessionsRoute
   '/api/knowledge/config': typeof ApiKnowledgeConfigRoute
   '/api/knowledge/graph': typeof ApiKnowledgeGraphRoute
   '/api/knowledge/list': typeof ApiKnowledgeListRoute
@@ -1337,6 +1377,11 @@ export interface FileRoutesById {
   '/api/dashboard/overview': typeof ApiDashboardOverviewRoute
   '/api/hermes-tasks/$taskId': typeof ApiHermesTasksTaskIdRoute
   '/api/hermesworld/reservations': typeof ApiHermesworldReservationsRouteWithChildren
+  '/api/honcho/conclusions': typeof ApiHonchoConclusionsRoute
+  '/api/honcho/health': typeof ApiHonchoHealthRoute
+  '/api/honcho/peers': typeof ApiHonchoPeersRoute
+  '/api/honcho/search': typeof ApiHonchoSearchRoute
+  '/api/honcho/sessions': typeof ApiHonchoSessionsRoute
   '/api/knowledge/config': typeof ApiKnowledgeConfigRoute
   '/api/knowledge/graph': typeof ApiKnowledgeGraphRoute
   '/api/knowledge/list': typeof ApiKnowledgeListRoute
@@ -1492,6 +1537,11 @@ export interface FileRouteTypes {
     | '/api/dashboard/overview'
     | '/api/hermes-tasks/$taskId'
     | '/api/hermesworld/reservations'
+    | '/api/honcho/conclusions'
+    | '/api/honcho/health'
+    | '/api/honcho/peers'
+    | '/api/honcho/search'
+    | '/api/honcho/sessions'
     | '/api/knowledge/config'
     | '/api/knowledge/graph'
     | '/api/knowledge/list'
@@ -1644,6 +1694,11 @@ export interface FileRouteTypes {
     | '/api/dashboard/overview'
     | '/api/hermes-tasks/$taskId'
     | '/api/hermesworld/reservations'
+    | '/api/honcho/conclusions'
+    | '/api/honcho/health'
+    | '/api/honcho/peers'
+    | '/api/honcho/search'
+    | '/api/honcho/sessions'
     | '/api/knowledge/config'
     | '/api/knowledge/graph'
     | '/api/knowledge/list'
@@ -1797,6 +1852,11 @@ export interface FileRouteTypes {
     | '/api/dashboard/overview'
     | '/api/hermes-tasks/$taskId'
     | '/api/hermesworld/reservations'
+    | '/api/honcho/conclusions'
+    | '/api/honcho/health'
+    | '/api/honcho/peers'
+    | '/api/honcho/search'
+    | '/api/honcho/sessions'
     | '/api/knowledge/config'
     | '/api/knowledge/graph'
     | '/api/knowledge/list'
@@ -1944,6 +2004,11 @@ export interface RootRouteChildren {
   ApiClaudeProxySplatRoute: typeof ApiClaudeProxySplatRoute
   ApiDashboardOverviewRoute: typeof ApiDashboardOverviewRoute
   ApiHermesworldReservationsRoute: typeof ApiHermesworldReservationsRouteWithChildren
+  ApiHonchoConclusionsRoute: typeof ApiHonchoConclusionsRoute
+  ApiHonchoHealthRoute: typeof ApiHonchoHealthRoute
+  ApiHonchoPeersRoute: typeof ApiHonchoPeersRoute
+  ApiHonchoSearchRoute: typeof ApiHonchoSearchRoute
+  ApiHonchoSessionsRoute: typeof ApiHonchoSessionsRoute
   ApiKnowledgeConfigRoute: typeof ApiKnowledgeConfigRoute
   ApiKnowledgeGraphRoute: typeof ApiKnowledgeGraphRoute
   ApiKnowledgeListRoute: typeof ApiKnowledgeListRoute
@@ -2935,6 +3000,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiKnowledgeConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/honcho/sessions': {
+      id: '/api/honcho/sessions'
+      path: '/api/honcho/sessions'
+      fullPath: '/api/honcho/sessions'
+      preLoaderRoute: typeof ApiHonchoSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/honcho/search': {
+      id: '/api/honcho/search'
+      path: '/api/honcho/search'
+      fullPath: '/api/honcho/search'
+      preLoaderRoute: typeof ApiHonchoSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/honcho/peers': {
+      id: '/api/honcho/peers'
+      path: '/api/honcho/peers'
+      fullPath: '/api/honcho/peers'
+      preLoaderRoute: typeof ApiHonchoPeersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/honcho/health': {
+      id: '/api/honcho/health'
+      path: '/api/honcho/health'
+      fullPath: '/api/honcho/health'
+      preLoaderRoute: typeof ApiHonchoHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/honcho/conclusions': {
+      id: '/api/honcho/conclusions'
+      path: '/api/honcho/conclusions'
+      fullPath: '/api/honcho/conclusions'
+      preLoaderRoute: typeof ApiHonchoConclusionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/hermesworld/reservations': {
       id: '/api/hermesworld/reservations'
       path: '/api/hermesworld/reservations'
@@ -3340,6 +3440,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiClaudeProxySplatRoute: ApiClaudeProxySplatRoute,
   ApiDashboardOverviewRoute: ApiDashboardOverviewRoute,
   ApiHermesworldReservationsRoute: ApiHermesworldReservationsRouteWithChildren,
+  ApiHonchoConclusionsRoute: ApiHonchoConclusionsRoute,
+  ApiHonchoHealthRoute: ApiHonchoHealthRoute,
+  ApiHonchoPeersRoute: ApiHonchoPeersRoute,
+  ApiHonchoSearchRoute: ApiHonchoSearchRoute,
+  ApiHonchoSessionsRoute: ApiHonchoSessionsRoute,
   ApiKnowledgeConfigRoute: ApiKnowledgeConfigRoute,
   ApiKnowledgeGraphRoute: ApiKnowledgeGraphRoute,
   ApiKnowledgeListRoute: ApiKnowledgeListRoute,
