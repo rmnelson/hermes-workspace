@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowDown01Icon,
@@ -48,10 +48,10 @@ function statusColor(run: BackgroundRun): string {
 }
 
 export function BackgroundRunsSection() {
-  const navigate = useNavigate()
   const [runs, setRuns] = useState<Array<BackgroundRun>>([])
   const [expanded, setExpanded] = useState(false)
   const [busyRunId, setBusyRunId] = useState<string | null>(null)
+  const [clearingStale, setClearingStale] = useState(false)
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -99,15 +99,18 @@ export function BackgroundRunsSection() {
     [],
   )
 
-  const handleOpen = useCallback(
-    (run: BackgroundRun) => {
-      void navigate({
-        to: '/chat/$sessionKey',
-        params: { sessionKey: run.friendlyId || run.sessionKey },
-      })
-    },
-    [navigate],
-  )
+  const handleClearStale = useCallback(async () => {
+    setClearingStale(true)
+    try {
+      await fetch('/api/runs/clear-stale', { method: 'POST' })
+      // Optimistic removal — server poll will confirm.
+      setRuns((prev) => prev.filter((r) => r.stalenessMs < STALE_THRESHOLD_MS))
+    } catch {
+      /* surface via next poll */
+    } finally {
+      setClearingStale(false)
+    }
+  }, [])
 
   if (runs.length === 0) return null
 
@@ -144,6 +147,19 @@ export function BackgroundRunsSection() {
           </span>
         </div>
         <CollapsiblePanel contentClassName="pt-1">
+          {staleCount > 0 && (
+            <div className="flex justify-end pb-1">
+              <button
+                type="button"
+                disabled={clearingStale}
+                onClick={() => void handleClearStale()}
+                className="rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100 hover:text-amber-800 disabled:opacity-50"
+                title="Mark all runs silent for >5m as done and remove them"
+              >
+                {clearingStale ? 'Clearing…' : `Clear ${staleCount} stale`}
+              </button>
+            </div>
+          )}
           <div className="space-y-1">
             {runs.map((run) => {
               const isStale = run.stalenessMs >= STALE_THRESHOLD_MS
@@ -184,13 +200,23 @@ export function BackgroundRunsSection() {
                     {run.status} · {snippet}
                   </p>
                   <div className="mt-1 flex justify-end gap-1 pl-3">
-                    <button
-                      type="button"
-                      onClick={() => handleOpen(run)}
+                    <Link
+                      to="/chat/$sessionKey"
+                      params={{ sessionKey: run.friendlyId || run.sessionKey }}
+                      onClick={() => {
+                        try {
+                          localStorage.setItem(
+                            'claude-last-session',
+                            run.friendlyId || run.sessionKey,
+                          )
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
                       className="rounded px-1.5 py-0.5 text-[10px] font-medium text-accent-600 hover:bg-accent-100 hover:text-accent-800"
                     >
                       Open
-                    </button>
+                    </Link>
                     <button
                       type="button"
                       disabled={isBusy}

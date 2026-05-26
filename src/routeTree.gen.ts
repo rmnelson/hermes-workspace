@@ -119,6 +119,7 @@ import { Route as ApiSkillsToggleRouteImport } from './routes/api/skills/toggle'
 import { Route as ApiSkillsInstallRouteImport } from './routes/api/skills/install'
 import { Route as ApiSkillsHubSearchRouteImport } from './routes/api/skills/hub-search'
 import { Route as ApiSessionsSendRouteImport } from './routes/api/sessions/send'
+import { Route as ApiRunsClearStaleRouteImport } from './routes/api/runs/clear-stale'
 import { Route as ApiRunsActiveRouteImport } from './routes/api/runs/active'
 import { Route as ApiProfilesUpdateRouteImport } from './routes/api/profiles/update'
 import { Route as ApiProfilesRenameRouteImport } from './routes/api/profiles/rename'
@@ -717,6 +718,11 @@ const ApiSessionsSendRoute = ApiSessionsSendRouteImport.update({
   path: '/send',
   getParentRoute: () => ApiSessionsRoute,
 } as any)
+const ApiRunsClearStaleRoute = ApiRunsClearStaleRouteImport.update({
+  id: '/api/runs/clear-stale',
+  path: '/api/runs/clear-stale',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiRunsActiveRoute = ApiRunsActiveRouteImport.update({
   id: '/api/runs/active',
   path: '/api/runs/active',
@@ -1094,6 +1100,7 @@ export interface FileRoutesByFullPath {
   '/api/profiles/rename': typeof ApiProfilesRenameRoute
   '/api/profiles/update': typeof ApiProfilesUpdateRoute
   '/api/runs/active': typeof ApiRunsActiveRoute
+  '/api/runs/clear-stale': typeof ApiRunsClearStaleRoute
   '/api/sessions/send': typeof ApiSessionsSendRoute
   '/api/skills/hub-search': typeof ApiSkillsHubSearchRoute
   '/api/skills/install': typeof ApiSkillsInstallRoute
@@ -1251,6 +1258,7 @@ export interface FileRoutesByTo {
   '/api/profiles/rename': typeof ApiProfilesRenameRoute
   '/api/profiles/update': typeof ApiProfilesUpdateRoute
   '/api/runs/active': typeof ApiRunsActiveRoute
+  '/api/runs/clear-stale': typeof ApiRunsClearStaleRoute
   '/api/sessions/send': typeof ApiSessionsSendRoute
   '/api/skills/hub-search': typeof ApiSkillsHubSearchRoute
   '/api/skills/install': typeof ApiSkillsInstallRoute
@@ -1410,6 +1418,7 @@ export interface FileRoutesById {
   '/api/profiles/rename': typeof ApiProfilesRenameRoute
   '/api/profiles/update': typeof ApiProfilesUpdateRoute
   '/api/runs/active': typeof ApiRunsActiveRoute
+  '/api/runs/clear-stale': typeof ApiRunsClearStaleRoute
   '/api/sessions/send': typeof ApiSessionsSendRoute
   '/api/skills/hub-search': typeof ApiSkillsHubSearchRoute
   '/api/skills/install': typeof ApiSkillsInstallRoute
@@ -1570,6 +1579,7 @@ export interface FileRouteTypes {
     | '/api/profiles/rename'
     | '/api/profiles/update'
     | '/api/runs/active'
+    | '/api/runs/clear-stale'
     | '/api/sessions/send'
     | '/api/skills/hub-search'
     | '/api/skills/install'
@@ -1727,6 +1737,7 @@ export interface FileRouteTypes {
     | '/api/profiles/rename'
     | '/api/profiles/update'
     | '/api/runs/active'
+    | '/api/runs/clear-stale'
     | '/api/sessions/send'
     | '/api/skills/hub-search'
     | '/api/skills/install'
@@ -1885,6 +1896,7 @@ export interface FileRouteTypes {
     | '/api/profiles/rename'
     | '/api/profiles/update'
     | '/api/runs/active'
+    | '/api/runs/clear-stale'
     | '/api/sessions/send'
     | '/api/skills/hub-search'
     | '/api/skills/install'
@@ -2026,6 +2038,7 @@ export interface RootRouteChildren {
   ApiProfilesRenameRoute: typeof ApiProfilesRenameRoute
   ApiProfilesUpdateRoute: typeof ApiProfilesUpdateRoute
   ApiRunsActiveRoute: typeof ApiRunsActiveRoute
+  ApiRunsClearStaleRoute: typeof ApiRunsClearStaleRoute
   ApiUpdateAgentRoute: typeof ApiUpdateAgentRoute
   ApiUpdateStatusRoute: typeof ApiUpdateStatusRoute
   ApiUpdateWorkspaceRoute: typeof ApiUpdateWorkspaceRoute
@@ -2804,6 +2817,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSessionsSendRouteImport
       parentRoute: typeof ApiSessionsRoute
     }
+    '/api/runs/clear-stale': {
+      id: '/api/runs/clear-stale'
+      path: '/api/runs/clear-stale'
+      fullPath: '/api/runs/clear-stale'
+      preLoaderRoute: typeof ApiRunsClearStaleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/runs/active': {
       id: '/api/runs/active'
       path: '/api/runs/active'
@@ -3462,6 +3482,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProfilesRenameRoute: ApiProfilesRenameRoute,
   ApiProfilesUpdateRoute: ApiProfilesUpdateRoute,
   ApiRunsActiveRoute: ApiRunsActiveRoute,
+  ApiRunsClearStaleRoute: ApiRunsClearStaleRoute,
   ApiUpdateAgentRoute: ApiUpdateAgentRoute,
   ApiUpdateStatusRoute: ApiUpdateStatusRoute,
   ApiUpdateWorkspaceRoute: ApiUpdateWorkspaceRoute,

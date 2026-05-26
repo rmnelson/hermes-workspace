@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { getHermesRoot } from './claude-paths'
+import { isRunListable, isRunStale } from './run-store-filters'
 
 export type PersistedRunToolCall = {
   id: string
@@ -250,21 +251,40 @@ export async function getActiveRunForSession(
   }
 }
 
-// Lists every non-complete/error run across all sessions, regardless of
-// staleness. Powers the "Background runs" panel so users can inspect and
-// abandon orphans that the staleness filter hides from the chat UI.
+// Lists non-complete/error runs across all sessions for the "Background runs"
+// panel. Runs that have been silent longer than MAX_LISTED_RUN_AGE_MS are aged
+// out automatically so the list can't grow without bound; the staleness badge
+// and "Clear stale" action handle the shorter-lived ones.
 export async function listAllActiveRuns(): Promise<Array<PersistedRunState>> {
   try {
     const entries = await readdir(RUNS_ROOT, { withFileTypes: true })
+    const now = Date.now()
     const sessionDirs = entries
       .filter((entry) => entry.isDirectory())
       .map((entry) => path.join(RUNS_ROOT, entry.name))
     const runsBySession = await Promise.all(sessionDirs.map(readRunsInDir))
     return runsBySession
       .flat()
-      .filter((run) => !['complete', 'error'].includes(run.status))
+      .filter((run) => isRunListable(run.status, run.updatedAt, now))
       .sort((a, b) => b.updatedAt - a.updatedAt)
   } catch {
     return []
   }
+}
+
+// Marks every currently-listed run that has been silent for at least
+// `thresholdMs` as errored, removing it from the active list. Returns the
+// number cleared. Powers the "Clear stale" action.
+export async function clearStaleRuns(
+  thresholdMs?: number,
+): Promise<number> {
+  const runs = await listAllActiveRuns()
+  const now = Date.now()
+  const stale = runs.filter((run) => isRunStale(run.updatedAt, now, thresholdMs))
+  await Promise.all(
+    stale.map((run) =>
+      markRunStatus(run.sessionKey, run.runId, 'error', 'Cleared as stale'),
+    ),
+  )
+  return stale.length
 }
