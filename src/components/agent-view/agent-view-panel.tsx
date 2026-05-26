@@ -15,6 +15,7 @@ import {
 import { AgentCard } from './agent-card'
 import { BackgroundRunsSection } from './background-runs-section'
 import { useAgentSpawn } from './hooks/use-agent-spawn'
+import { selectUsageProviderId } from './usage-provider-match'
 import type {
   AgentNode,
   AgentNodeStatus,
@@ -213,8 +214,9 @@ function OrchestratorCard({
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch model from gateway
+  // Fetch model + its provider from gateway
   const [model, setModel] = useState('')
+  const [modelProvider, setModelProvider] = useState('')
 
   // Usage state
   const [contextPct, setContextPct] = useState<number | null>(null)
@@ -229,16 +231,35 @@ function OrchestratorCard({
   const [providerFlash, setProviderFlash] = useState(false)
   const flashTimerRefOc = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function getPrimaryProvider(all: OcProviderEntry[], preferred: string | null) {
+  function getPrimaryProvider(
+    all: OcProviderEntry[],
+    preferred: string | null,
+    agentModel: string,
+    agentModelProvider: string,
+  ) {
+    // Explicit manual selection (the cycle button) wins.
     if (preferred) {
       const m = all.find((p) => p.provider === preferred && p.status === 'ok' && p.lines.length > 0)
       if (m) return m
     }
+    // Otherwise show the provider that matches the agent's actual model, even
+    // when it has no usage data — so a non-Claude agent never shows Claude's.
+    const matchedId = selectUsageProviderId(agentModelProvider, agentModel, all)
+    if (matchedId) {
+      const matched = all.find((p) => p.provider === matchedId)
+      if (matched) return matched
+    }
+    // Last resort: the first provider that has data.
     return all.find((p) => p.status === 'ok' && p.lines.length > 0) ?? null
   }
 
-  function updateUsageRowsFromProviders(providers: OcProviderEntry[], preferred: string | null) {
-    const primary = getPrimaryProvider(providers, preferred)
+  function updateUsageRowsFromProviders(
+    providers: OcProviderEntry[],
+    preferred: string | null,
+    agentModel: string,
+    agentModelProvider: string,
+  ) {
+    const primary = getPrimaryProvider(providers, preferred, agentModel, agentModelProvider)
     if (!primary) return
     const rows: OcUsageRow[] = primary.lines
       .filter((l) => l.type === 'progress' && l.used !== undefined)
@@ -258,7 +279,7 @@ function OrchestratorCard({
     if (!next) return
     setPreferredProvider(next.provider)
     try { localStorage.setItem(PREFERRED_PROVIDER_KEY_OC, next.provider) } catch { /* noop */ }
-    updateUsageRowsFromProviders(allOcProviders, next.provider)
+    updateUsageRowsFromProviders(allOcProviders, next.provider, model, modelProvider)
     if (flashTimerRefOc.current) clearTimeout(flashTimerRefOc.current)
     setProviderFlash(true)
     flashTimerRefOc.current = setTimeout(() => setProviderFlash(false), 300)
@@ -267,14 +288,22 @@ function OrchestratorCard({
   useEffect(() => {
     let cancelled = false
     async function fetchAll() {
+      // Freshly-fetched model/provider for this cycle (state is stale until the
+      // next render, but provider-usage is selected within this same call).
+      let fetchedModel = model
+      let fetchedProvider = modelProvider
       try {
-        // session-status: model + context pct
+        // session-status: model + provider + context pct
         const res = await fetch('/api/session-status')
         if (!res.ok) return
         const data = await res.json()
         const payload = data.payload ?? data
         const m = payload.model ?? payload.currentModel ?? ''
+        if (m) fetchedModel = String(m)
         if (!cancelled && m) setModel(String(m))
+        const mp = payload.modelProvider ?? payload.provider ?? ''
+        if (mp) fetchedProvider = String(mp)
+        if (!cancelled && mp) setModelProvider(String(mp))
         const sn = String(payload.sessionLabel ?? payload.sessionName ?? payload.name ?? payload.label ?? '')
         if (!cancelled && sn) setSessionName(sn)
         const pct = ocParseContextPct(payload)
@@ -293,7 +322,7 @@ function OrchestratorCard({
 
         if (!cancelled) {
           setAllOcProviders(data2.providers)
-          updateUsageRowsFromProviders(data2.providers, preferredProvider)
+          updateUsageRowsFromProviders(data2.providers, preferredProvider, fetchedModel, fetchedProvider)
         }
       } catch { /* noop */ }
     }
@@ -326,6 +355,9 @@ function OrchestratorCard({
   // Build usage rows: provider rows if available, else synthetic context row
   const ctxRow: OcUsageRow = { label: 'Ctx', pct: contextPct ?? 0, resetHint: null }
   const displayRows: OcUsageRow[] = usageRows.length > 0 ? usageRows : (contextPct !== null ? [ctxRow] : [])
+  const renderableUsageRows = displayRows.filter(
+    (row) => !(row.label === 'Ctx' && row.pct === 0) && row.pct > 0,
+  )
   const usageHeader = providerLabel ?? 'Usage'
 
   // Provider logo URLs (Simple Icons CDN)
@@ -446,7 +478,7 @@ function OrchestratorCard({
       </div>
 
       {/* ── Usage section ── */}
-      {displayRows.length > 0 && (
+      {(displayRows.length > 0 || providerLabel) && (
         <div className={cn('border-t border-primary-200/20 pt-2 space-y-1.5', compact ? 'mt-1.5 px-2' : 'mt-2 px-3')}>
           {/* Provider header row — centered */}
           <div className="flex w-full items-center justify-between">
@@ -490,7 +522,12 @@ function OrchestratorCard({
 
           {usageExpanded && (
             <div className="space-y-1.5">
-              {displayRows.filter(row => !(row.label === 'Ctx' && row.pct === 0) && row.pct > 0).map((row) => (
+              {renderableUsageRows.length === 0 && (
+                <p className="text-[9px] text-primary-400 leading-none">
+                  no usage data
+                </p>
+              )}
+              {renderableUsageRows.map((row) => (
                 <div key={row.label} className="space-y-0.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-medium text-primary-500 leading-none">{row.label}</span>
