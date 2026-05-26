@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { resolveIncidentTarget } from './incident-target'
 import type {
   DashboardIncident,
   DashboardOverview,
@@ -37,14 +39,48 @@ export function AttentionMarquee({
   overview: DashboardOverview | null
 }) {
   const navigate = useNavigate()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const items = overview?.incidents ?? []
+
+  // Close the detail popover on Escape.
+  useEffect(() => {
+    if (!selectedId) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedId])
+
   if (items.length === 0) return null
+
+  const selected = items.find((i) => i.id === selectedId) ?? null
+  const selectedTarget = selected ? resolveIncidentTarget(selected) : null
+  const selectedActionLabel = selectedTarget
+    ? selectedTarget.kind === 'external'
+      ? 'Open link'
+      : selectedTarget.label
+    : ''
+
+  const goToIncident = (incident: DashboardIncident) => {
+    const target = resolveIncidentTarget(incident)
+    setSelectedId(null)
+    if (target.kind === 'external') {
+      window.open(target.href, '_blank', 'noopener,noreferrer')
+    } else if (target.kind === 'route') {
+      void navigate({ to: target.to as '/jobs' })
+    } else {
+      document
+        .getElementById(target.elementId)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
 
   const tracks = [...items, ...items]
 
   return (
     <div
-      className="group relative flex items-center gap-2 overflow-hidden rounded-md border px-2 py-1"
+      className="group relative flex items-center gap-2 rounded-md border px-2 py-1"
       style={{
         background:
           'linear-gradient(90deg, color-mix(in srgb, var(--theme-warning) 10%, transparent), transparent 70%)',
@@ -82,28 +118,13 @@ export function AttentionMarquee({
           className="oc-marquee-track flex shrink-0 items-center gap-6 pl-3 will-change-transform"
         >
           {tracks.map((item, idx) => {
-            const handleClick = () => {
-              if (item.href) {
-                if (
-                  item.href.startsWith('http://') ||
-                  item.href.startsWith('https://')
-                ) {
-                  window.open(item.href, '_blank', 'noopener,noreferrer')
-                  return
-                }
-                window.location.assign(item.href)
-                return
-              }
-              if (item.source === 'cron') navigate({ to: '/jobs' })
-              else if (item.source === 'config')
-                navigate({ to: '/settings', search: {} })
-              else navigate({ to: '/jobs' })
-            }
             return (
               <button
                 key={`${item.id}-${idx}`}
                 type="button"
-                onClick={handleClick}
+                onClick={() =>
+                  setSelectedId((prev) => (prev === item.id ? null : item.id))
+                }
                 className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] hover:underline"
                 style={{ color: SEVERITY_COLOR[item.severity] }}
               >
@@ -123,6 +144,72 @@ export function AttentionMarquee({
           })}
         </div>
       </div>
+
+      {selected ? (
+        <>
+          {/* Click-away layer. */}
+          <div
+            aria-hidden
+            className="fixed inset-0 z-40"
+            onClick={() => setSelectedId(null)}
+          />
+          <div
+            role="dialog"
+            aria-label="Attention item detail"
+            className="absolute left-0 top-full z-50 mt-1 w-[min(360px,90vw)] rounded-md border p-3 shadow-lg"
+            style={{
+              background: 'var(--theme-card)',
+              borderColor:
+                'color-mix(in srgb, var(--theme-warning) 35%, transparent)',
+            }}
+          >
+            <div className="flex items-start gap-2">
+              <span aria-hidden className="text-[14px] leading-none">
+                {SOURCE_GLYPH[selected.source]}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: SEVERITY_COLOR[selected.severity] }}
+                >
+                  {selected.label}
+                </p>
+                {selected.detail ? (
+                  <p
+                    className="mt-1 text-[11px] leading-snug"
+                    style={{ color: 'var(--theme-muted)' }}
+                  >
+                    {selected.detail}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setSelectedId(null)}
+                className="shrink-0 rounded px-1 text-[13px] leading-none"
+                style={{ color: 'var(--theme-muted)' }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => goToIncident(selected)}
+                className="rounded px-2 py-1 text-[11px] font-medium"
+                style={{
+                  background:
+                    'color-mix(in srgb, var(--theme-warning) 18%, transparent)',
+                  color: 'var(--theme-warning)',
+                }}
+              >
+                {selectedActionLabel}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <style>{`
         @keyframes oc-attention-marquee {

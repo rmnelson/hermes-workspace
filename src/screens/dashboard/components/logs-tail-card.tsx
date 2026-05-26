@@ -43,7 +43,8 @@ export function LogsTailCard({
   return (
     <>
       <div
-        className="relative flex flex-col gap-2 overflow-hidden rounded-xl border p-3"
+        id="dashboard-logs"
+        className="relative flex flex-col gap-2 overflow-hidden rounded-xl border p-3 scroll-mt-4"
         style={{
           background:
             'linear-gradient(150deg, color-mix(in srgb, var(--theme-card) 96%, transparent), color-mix(in srgb, var(--theme-card) 92%, transparent))',
