@@ -1,10 +1,16 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const MotionButton = motion.create(Button)
+// Render a native <button> via motion rather than motion.create(Button): the
+// base-ui Button is a useRender (non-forwardRef) component, and wrapping it in
+// motion.create can leave motion's ref — and the onClick — attached to a node it
+// doesn't actually control, so clicks silently no-op. A native motion.button
+// guarantees the handler reaches the DOM. Styling is kept identical via
+// buttonVariants (ghost / icon-sm).
+const MotionButton = motion.button
 
 type ScrollToBottomButtonProps = {
   className?: string
@@ -24,10 +30,9 @@ function ScrollToBottomButton({
       {isVisible ? (
         <MotionButton
           type="button"
-          variant="ghost"
-          size="icon-sm"
           aria-label="Scroll to bottom"
           className={cn(
+            buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
             'pointer-events-auto relative rounded-full text-white shadow-lg transition-colors hover:opacity-90',
             className,
           )}

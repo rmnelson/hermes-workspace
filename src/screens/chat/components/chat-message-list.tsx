@@ -25,6 +25,7 @@ import type { ChatContainerApi } from '@/components/prompt-kit/chat-container'
 import { AssistantAvatar } from '@/components/avatars'
 import { cn } from '@/lib/utils'
 import { hapticTap } from '@/lib/haptics'
+import { useRenderLoopGuard } from '@/lib/freeze-watchdog'
 import { CHAT_OPEN_MESSAGE_SEARCH_EVENT } from '@/screens/chat/chat-events'
 
 /** Duration (ms) the thinking indicator stays visible after waitingForResponse
@@ -591,10 +592,18 @@ function ChatMessageListComponent({
   isCompacting = false,
   sending = false,
 }: ChatMessageListProps) {
+  // Trip + recover (instead of freezing the tab) if this list ever falls into a
+  // re-render loop. Must stay the first hook so hook order is stable.
+  useRenderLoopGuard('ChatMessageList')
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const lastUserRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const prevSessionKeyRef = useRef<string | undefined>(sessionKey)
+  // Start undefined (not `sessionKey`) so the first non-loading pass counts as a
+  // "change" and scrolls to the bottom on mount. Returning to a chat whose
+  // history is already cached renders at full height instantly — no growth event
+  // for ChatContainerRoot's ResizeObserver to catch — so without this the
+  // viewport stays pinned at the top. See scroll-to-bottom effect below.
+  const prevSessionKeyRef = useRef<string | undefined>(undefined)
   // Follow-the-bottom state is owned by ChatContainerRoot; we drive explicit
   // scroll/follow commands through this imperative handle.
   const chatScrollApiRef = useRef<ChatContainerApi | null>(null)
