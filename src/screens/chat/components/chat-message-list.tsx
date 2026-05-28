@@ -1339,18 +1339,38 @@ function ChatMessageListComponent({
     return () => window.clearInterval(timer)
   }, [])
 
-  // Re-engage follow + scroll to bottom on session change. Streaming growth is
-  // followed by ChatContainerRoot's ResizeObserver while follow is engaged, so
-  // we no longer scroll per streaming token here — that fought the user trying
-  // to scroll up and read while the agent was still responding.
+  // Scroll to the bottom once per session mount/switch — but only after the
+  // messages are actually present. Reacting to sessionKey alone isn't enough:
+  // when you leave a chat (e.g. to Memory) and come back, the route remounts
+  // and the cached history paints at full height in a single pass, so there is
+  // no growth event for ChatContainerRoot's ResizeObserver to re-anchor on, and
+  // the sessionKey-change fires while finalDisplayMessages is still filling.
+  // Gate on displayEntries being non-empty and use a double rAF so the scroll
+  // lands after layout settles. scrollToBottom() also engages follow, so any
+  // later height growth (markdown/images) keeps us pinned to the bottom.
+  //
+  // Streaming growth is followed by ChatContainerRoot's ResizeObserver while
+  // follow is engaged, so we no longer scroll per streaming token here — that
+  // fought the user trying to scroll up and read while the agent responded.
+  const didInitialScrollRef = useRef(false)
   useEffect(() => {
+    if (prevSessionKeyRef.current !== sessionKey) {
+      prevSessionKeyRef.current = sessionKey
+      didInitialScrollRef.current = false
+    }
     if (loading) return
-    const sessionChanged = prevSessionKeyRef.current !== sessionKey
-    prevSessionKeyRef.current = sessionKey
-    if (!sessionChanged) return
-    const frameId = window.requestAnimationFrame(() => scrollToBottom('auto'))
-    return () => window.cancelAnimationFrame(frameId)
-  }, [loading, sessionKey, scrollToBottom])
+    if (didInitialScrollRef.current) return
+    if (displayEntries.length === 0) return
+    didInitialScrollRef.current = true
+    let secondFrame = 0
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => scrollToBottom('auto'))
+    })
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      window.cancelAnimationFrame(secondFrame)
+    }
+  }, [loading, sessionKey, displayEntries.length, scrollToBottom])
 
   // Re-engage follow when the user sends a message, so the incoming response is
   // tracked even if they had scrolled up to read during the previous turn.
