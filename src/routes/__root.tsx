@@ -26,6 +26,7 @@ import {
   ONBOARDING_KEY,
 } from '@/components/onboarding/claude-onboarding'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { reportPriorFreeze, startFreezeWatchdog } from '@/lib/freeze-watchdog'
 import { LoginScreen } from '@/components/auth/login-screen'
 import { fetchClaudeAuthStatus, type AuthStatus } from '@/lib/claude-auth'
 import { getRootSurfaceState } from './-root-layout-state'
@@ -269,6 +270,11 @@ function RootLayout() {
   useEffect(() => {
     setMounted(true)
     initializeSettingsAppearance()
+
+    // Freeze diagnostics: surface anything captured before a prior hard lock,
+    // then keep the heartbeat/long-task watchdog running for this session.
+    reportPriorFreeze()
+    startFreezeWatchdog()
 
     const syncOnboardingCompletion = () => {
       try {

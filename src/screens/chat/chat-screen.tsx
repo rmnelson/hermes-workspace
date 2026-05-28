@@ -88,6 +88,7 @@ import { stripQueuedWrapper } from '@/lib/strip-queued-wrapper'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/toast'
 import { hapticTap } from '@/lib/haptics'
+import { mark, useRenderLoopGuard } from '@/lib/freeze-watchdog'
 import { FileExplorerSidebar } from '@/components/file-explorer'
 import { SEARCH_MODAL_EVENTS } from '@/hooks/use-search-modal'
 import { SIDEBAR_TOGGLE_EVENT } from '@/hooks/use-global-shortcuts'
@@ -464,6 +465,9 @@ export function ChatScreen({
   compact = false,
   embedded = false,
 }: ChatScreenProps) {
+  // Recover (instead of locking the tab) if this screen falls into a re-render
+  // loop. Must be the first hook so hook order stays stable across renders.
+  useRenderLoopGuard('ChatScreen')
   const navigate = useNavigate()
   const chatFocusMode = useWorkspaceStore((s) => s.chatFocusMode)
   const setChatFocusMode = useWorkspaceStore((s) => s.setChatFocusMode)
@@ -1262,6 +1266,22 @@ export function ChatScreen({
   const activeRealtimeStreamingText = isPortableMode
     ? localStreamingText
     : realtimeStreamingText
+
+  // Freeze-watchdog breadcrumb. Fires only on these coarse transitions (not the
+  // render hot path), so if the tab locks up the persisted heartbeat tells us
+  // which session / phase it was in when it died.
+  useEffect(() => {
+    mark(
+      'chat',
+      `session=${resolvedSessionKey ?? 'new'} waiting=${waitingForResponse} ` +
+        `streaming=${activeIsRealtimeStreaming} conn=${connectionState}`,
+    )
+  }, [
+    resolvedSessionKey,
+    waitingForResponse,
+    activeIsRealtimeStreaming,
+    connectionState,
+  ])
   const smoothActiveStreamingText = useSmoothStreamingText(
     activeRealtimeStreamingText,
     activeIsRealtimeStreaming,
