@@ -1,7 +1,6 @@
 'use client'
 
 import { memo, useCallback, useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
 import {
   PreviewCard,
   PreviewCardPopup,
@@ -91,29 +90,15 @@ function ContextBarComponent({
   const isDanger = clampedPct >= 75 && clampedPct <= 90
   const isWarning = clampedPct >= 50 && clampedPct < 75
 
-  const barColor = isCritical
-    ? 'bg-red-500'
-    : isDanger
-      ? 'bg-orange-500'
+  // Theme-token driven so the bar matches the active theme (was hardcoded
+  // red/orange/yellow/emerald). Three severity levels: success → warning → danger.
+  const fillColor =
+    isCritical || isDanger
+      ? 'var(--theme-danger)'
       : isWarning
-        ? 'bg-yellow-400'
-        : 'bg-emerald-500'
-
-  const barBg = isCritical
-    ? 'bg-red-100'
-    : isDanger
-      ? 'bg-orange-100'
-      : isWarning
-        ? 'bg-yellow-100'
-        : 'bg-emerald-100'
-
-  const textColor = isCritical
-    ? 'text-red-600'
-    : isDanger
-      ? 'text-orange-600'
-      : isWarning
-        ? 'text-yellow-600'
-        : 'text-emerald-600'
+        ? 'var(--theme-warning)'
+        : 'var(--theme-success)'
+  const trackColor = `color-mix(in srgb, ${fillColor} 16%, transparent)`
 
   if (isMobile) {
     return (
@@ -126,13 +111,10 @@ function ContextBarComponent({
           aria-label={`Context: ${Math.round(clampedPct)}% used`}
         />
         {/* Bar — always 3px, never moves */}
-        <div className={cn('w-full h-[3px]', barBg)}>
+        <div className="w-full h-[3px]" style={{ background: trackColor }}>
           <div
-            className={cn(
-              'h-full transition-all duration-700 ease-out',
-              barColor,
-            )}
-            style={{ width: `${clampedPct}%` }}
+            className="h-full transition-all duration-700 ease-out"
+            style={{ width: `${clampedPct}%`, background: fillColor }}
           />
         </div>
         {/* Label floats below bar on tap */}
@@ -154,17 +136,12 @@ function ContextBarComponent({
     <PreviewCard>
       <PreviewCardTrigger className="block w-full cursor-pointer">
         <div
-          className={cn(
-            'shrink-0 w-full h-2 transition-colors duration-300 relative',
-            barBg,
-          )}
+          className="shrink-0 w-full h-2 transition-colors duration-300 relative"
+          style={{ background: trackColor }}
         >
           <div
-            className={cn(
-              'h-full transition-all duration-700 ease-out',
-              barColor,
-            )}
-            style={{ width: `${clampedPct}%` }}
+            className="h-full transition-all duration-700 ease-out"
+            style={{ width: `${clampedPct}%`, background: fillColor }}
           />
           {/* % shown on hover via popup only */}
         </div>
@@ -181,21 +158,19 @@ function ContextBarComponent({
               Context Window
             </span>
             <span
-              className={cn(
-                'text-[11px] font-semibold tabular-nums',
-                textColor,
-              )}
+              className="text-[11px] font-semibold tabular-nums"
+              style={{ color: fillColor }}
             >
               {Math.round(clampedPct)}%
             </span>
           </div>
-          <div className={cn('w-full h-2 rounded-full overflow-hidden', barBg)}>
+          <div
+            className="w-full h-2 rounded-full overflow-hidden"
+            style={{ background: trackColor }}
+          >
             <div
-              className={cn(
-                'h-full rounded-full transition-all duration-500',
-                barColor,
-              )}
-              style={{ width: `${clampedPct}%` }}
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${clampedPct}%`, background: fillColor }}
             />
           </div>
           <div className="flex items-center justify-between">
@@ -210,7 +185,10 @@ function ContextBarComponent({
             )}
           </div>
           {isCritical && (
-            <p className="text-[10px] text-red-600 font-medium">
+            <p
+              className="text-[10px] font-medium"
+              style={{ color: 'var(--theme-danger)' }}
+            >
               Context almost full — consider starting a new chat
             </p>
           )}

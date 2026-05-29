@@ -1,6 +1,13 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Folder01Icon } from '@hugeicons/core-free-icons'
+import {
+  Alert02Icon,
+  BrainIcon,
+  Delete02Icon,
+  Folder01Icon,
+  PencilEdit01Icon,
+  Undo02Icon,
+} from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
 import {
   TooltipContent,
@@ -377,10 +384,14 @@ function ChatHeaderComponent({
                 <button
                   type="button"
                   onClick={startTitleEdit}
-                  className="text-xs text-primary-400 opacity-0 group-hover:opacity-100 hover:text-primary-600 transition-opacity shrink-0"
+                  className="text-primary-400 opacity-0 group-hover:opacity-100 hover:text-primary-600 transition-opacity shrink-0"
                   title="Rename session"
                 >
-                  ✏️
+                  <HugeiconsIcon
+                    icon={PencilEdit01Icon}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
                 </button>
               )}
               {sessionPopoverOpen && (
@@ -502,7 +513,7 @@ function ChatHeaderComponent({
                     role="status"
                     style={{ boxShadow: '0 0 6px 1px rgba(251,191,36,0.4)' }}
                   >
-                    🧠
+                    <HugeiconsIcon icon={BrainIcon} size={13} strokeWidth={1.8} />
                   </span>
                 }
               />
@@ -557,7 +568,7 @@ function ChatHeaderComponent({
                     className="text-primary-500 hover:bg-primary-100 dark:hover:bg-primary-800"
                     aria-label="Undo last message"
                   >
-                    <span className="text-sm">↩️</span>
+                    <HugeiconsIcon icon={Undo02Icon} size={18} strokeWidth={1.8} />
                   </Button>
                 }
               />
@@ -590,9 +601,11 @@ function ChatHeaderComponent({
                       clearConfirm ? 'Confirm clear' : 'Clear session'
                     }
                   >
-                    <span className="text-sm">
-                      {clearConfirm ? '⚠️' : '🗑️'}
-                    </span>
+                    <HugeiconsIcon
+                      icon={clearConfirm ? Alert02Icon : Delete02Icon}
+                      size={18}
+                      strokeWidth={1.8}
+                    />
                   </Button>
                 }
               />
