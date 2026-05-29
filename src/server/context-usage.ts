@@ -486,11 +486,12 @@ export async function readContextUsage(
     const messageCount = Number(sessionData.message_count) || 0
 
     let usedTokens = 0
-    const assistantTurns = Math.max(1, Math.ceil(messageCount / 2))
 
-    if (cacheReadTokens > 0 && assistantTurns > 0) {
-      usedTokens = estimateContextTokensFromCacheRead(cacheReadTokens, messageCount)
-    } else if (messageCount > 0) {
+    // Prefer estimating from the actual message list — it rises monotonically
+    // with the conversation. The old `cache_read_tokens / turns` heuristic
+    // divided by turn count, so a 187-message session reported FEWER tokens
+    // than a 23-message one and the context bar appeared stuck near ~1-2%.
+    if (messageCount > 0) {
       try {
         const targetSessionId = resolvedSessionId || String(sessionData.id || '')
         if (targetSessionId) {
@@ -531,6 +532,12 @@ export async function readContextUsage(
       } catch {
         /* ignore */
       }
+    }
+
+    // Fallback: if the message list couldn't be fetched, use the cache-read
+    // heuristic as a rough floor rather than reporting zero.
+    if (usedTokens <= 0 && cacheReadTokens > 0) {
+      usedTokens = estimateContextTokensFromCacheRead(cacheReadTokens, messageCount)
     }
 
     usedTokens = Math.min(usedTokens, maxTokens)
