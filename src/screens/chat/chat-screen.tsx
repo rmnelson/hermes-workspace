@@ -2837,7 +2837,11 @@ export function ChatScreen({
             />
           ) : null}
         </main>
-        {!compact && !isFocusMode && <AgentViewPanel />}
+        {!compact && !isFocusMode && (
+          <AgentViewPanel
+            sessionKey={resolvedSessionKey || activeCanonicalKey || undefined}
+          />
+        )}
       </div>
       {!compact && !hideUi && !isMobile && !isFocusMode && <TerminalPanel />}
 

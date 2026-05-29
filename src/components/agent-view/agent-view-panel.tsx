@@ -201,9 +201,13 @@ function ocParseContextPct(payload: unknown): number {
 function OrchestratorCard({
   compact = false,
   cardRef,
+  sessionKey,
 }: {
   compact?: boolean
   cardRef?: (element: HTMLElement | null) => void
+  /** Active chat session to report context/usage for. Falls back to 'main'
+   *  server-side when omitted. */
+  sessionKey?: string
 }) {
   const { state, label } = useOrchestratorState()
   const glowClass = STATE_GLOW[state] ?? STATE_GLOW.idle
@@ -293,8 +297,13 @@ function OrchestratorCard({
       let fetchedModel = model
       let fetchedProvider = modelProvider
       try {
-        // session-status: model + provider + context pct
-        const res = await fetch('/api/session-status')
+        // session-status: model + provider + context pct — scoped to the
+        // active chat session so the Ctx tracks what you're viewing (not 'main').
+        const res = await fetch(
+          `/api/session-status${
+            sessionKey ? `?sessionKey=${encodeURIComponent(sessionKey)}` : ''
+          }`,
+        )
         if (!res.ok) return
         const data = await res.json()
         const payload = data.payload ?? data
@@ -335,7 +344,7 @@ function OrchestratorCard({
       if (flashTimerRefOc.current) clearTimeout(flashTimerRefOc.current)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferredProvider])
+  }, [preferredProvider, sessionKey])
 
   const displayName = agentName || sessionName || 'Agent'
 
@@ -602,7 +611,7 @@ function getStatusBubble(
   return { type: 'checkpoint', text: `${clampedProgress}% complete` }
 }
 
-export function AgentViewPanel() {
+export function AgentViewPanel({ sessionKey }: { sessionKey?: string } = {}) {
   // Sound notifications for agent events
   useSounds({ autoPlay: true })
 
@@ -953,7 +962,7 @@ export function AgentViewPanel() {
                 <InspectorPanel embedded />
 
                 {/* Main Agent Card (includes usage section) */}
-                <OrchestratorCard compact={false} />
+                <OrchestratorCard compact={false} sessionKey={sessionKey} />
 
                 {/* Agents — agent cards — only show when there's something */}
                 {(activeCount > 0 || queuedAgents.length > 0 || historyAgents.length > 0) && <section className="rounded-2xl bg-primary-200/15 p-1">
@@ -1354,7 +1363,7 @@ export function AgentViewPanel() {
                 </div>
                 {/* Content — same as desktop sidebar */}
                 <div className="space-y-3 p-3">
-                  <OrchestratorCard compact={false} />
+                  <OrchestratorCard compact={false} sessionKey={sessionKey} />
 
                   <section className="rounded-2xl bg-primary-200/15 p-1">
                     <div className="mb-1 flex justify-center">
