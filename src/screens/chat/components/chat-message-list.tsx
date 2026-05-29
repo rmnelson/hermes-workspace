@@ -189,12 +189,32 @@ type ThinkingBubbleProps = {
  * label that reflects what's actually happening (tool calls, etc.).
  */
 function ThinkingBubble({
-  activeToolCalls: _activeToolCalls = [],
-  liveToolActivity: _liveToolActivity = [],
+  activeToolCalls = [],
+  liveToolActivity = [],
   researchCard,
   isCompacting = false,
 }: ThinkingBubbleProps) {
-  const statusLabel = isCompacting ? 'Compacting context...' : 'Thinking…'
+  // Derive a live "what's it doing" label from the tool activity we already get
+  // over SSE, instead of a generic "Thinking…". Prefer a still-running
+  // structured tool call; otherwise the most recent live activity name
+  // (liveToolActivity is newest-first). getToolVerb/getToolEmoji are defined
+  // above and map e.g. web_search → "🔍 Searching".
+  const activeToolName = (() => {
+    const running = activeToolCalls.find((toolCall) => {
+      const phase = (toolCall.phase || '').toLowerCase()
+      return !['done', 'complete', 'completed', 'error', 'failed'].includes(
+        phase,
+      )
+    })
+    return running?.name ?? liveToolActivity[0]?.name ?? null
+  })()
+  const statusEmoji =
+    isCompacting || !activeToolName ? null : getToolEmoji(activeToolName)
+  const statusLabel = isCompacting
+    ? 'Compacting context…'
+    : activeToolName
+      ? `${getToolVerb(activeToolName)}…`
+      : 'Thinking…'
 
   // Elapsed time counter — resets when the status label changes (new tool)
   const [elapsed, setElapsed] = useState(0)
@@ -262,6 +282,10 @@ function ThinkingBubble({
                     className="inline-block size-3 rounded-full border border-primary-300 border-t-primary-500 animate-spin"
                     aria-hidden="true"
                   />
+                ) : statusEmoji ? (
+                  <span className="text-sm leading-none" aria-hidden="true">
+                    {statusEmoji}
+                  </span>
                 ) : (
                   <>
                     <span className="thinking-dot thinking-dot-1" />
