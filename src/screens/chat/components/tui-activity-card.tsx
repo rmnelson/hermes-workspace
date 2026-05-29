@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { capForRender, formatBytes } from '@/lib/render-size-guard'
 
 /**
  * TUI-style activity card.
@@ -136,6 +137,23 @@ function ToolRow({
   const hasOutputData = !!(section.outputText || section.errorText)
   const canExpand = hasInputData || hasOutputData
 
+  // Cap rendered tool I/O so a multi-MB dump can't OOM the tab when expanded.
+  // Only computed while open (lazy), and records true size for the watchdog.
+  const cappedInput =
+    open && hasInputData
+      ? capForRender(
+          JSON.stringify(section.input, null, 2),
+          `tool-input:${section.type}`,
+        )
+      : null
+  const cappedOutput =
+    open && hasOutputData
+      ? capForRender(
+          section.outputText || section.errorText || '',
+          `tool-output:${section.type}`,
+        )
+      : null
+
   return (
     <div className="font-mono text-[12px] leading-relaxed">
       <button
@@ -216,8 +234,16 @@ function ToolRow({
                 className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded font-mono text-[10px]"
                 style={{ color: 'var(--code-foreground, var(--theme-text))' }}
               >
-                {JSON.stringify(section.input, null, 2)}
+                {cappedInput?.text}
               </pre>
+              {cappedInput?.truncated ? (
+                <div
+                  className="mt-0.5 text-[9px] opacity-60"
+                  style={{ color: 'var(--theme-muted)' }}
+                >
+                  Truncated — {formatBytes(cappedInput.originalBytes)} total
+                </div>
+              ) : null}
             </div>
           ) : null}
           {hasOutputData ? (
@@ -240,8 +266,16 @@ function ToolRow({
                     : 'var(--code-foreground, var(--theme-text))',
                 }}
               >
-                {section.outputText || section.errorText || ''}
+                {cappedOutput?.text}
               </pre>
+              {cappedOutput?.truncated ? (
+                <div
+                  className="mt-0.5 text-[9px] opacity-60"
+                  style={{ color: 'var(--theme-muted)' }}
+                >
+                  Truncated — {formatBytes(cappedOutput.originalBytes)} total
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

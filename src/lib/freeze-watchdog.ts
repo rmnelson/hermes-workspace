@@ -75,6 +75,21 @@ const MAX_CRUMBS = 40
 const crumbs: Array<string> = []
 let lastTag = 'init'
 
+// Running max of the largest payload rendered this session (set from the render
+// path via render-size-guard). In-memory only — the heartbeat persists it, so a
+// freeze report shows the biggest thing we tried to render and where it came
+// from. This is the Firefox-safe stand-in for a heap snapshot.
+let maxPayloadBytes = 0
+let maxPayloadLabel = ''
+
+/** Record a rendered payload's size; keeps the session max for the heartbeat. */
+export function notePayloadSize(label: string, bytes: number): void {
+  if (bytes > maxPayloadBytes) {
+    maxPayloadBytes = bytes
+    maxPayloadLabel = label
+  }
+}
+
 function flushCrumbs(): void {
   safeSet(key('bc'), crumbs.join('\n'))
 }
@@ -109,6 +124,16 @@ export function startFreezeWatchdog(): void {
   // and whether the tab was actually visible (so a backgrounded healthy tab
   // isn't mistaken for a freeze).
   const beat = () => {
+    // DOM node count is a cheap, Firefox-safe proxy for render bloat: a runaway
+    // render (huge list / massive markdown) shows as this climbing in the last
+    // heartbeats before a freeze. A flat count + large maxPayload points instead
+    // at a single giant string/allocation.
+    let domNodes = 0
+    try {
+      domNodes = document.getElementsByTagName('*').length
+    } catch {
+      // ignore
+    }
     safeSet(
       key('hb'),
       JSON.stringify({
@@ -117,6 +142,9 @@ export function startFreezeWatchdog(): void {
         lastTag,
         url: location.pathname + location.search,
         visible: document.visibilityState === 'visible',
+        domNodes,
+        maxPayloadKB: Math.round(maxPayloadBytes / 1024),
+        maxPayloadLabel,
       }),
     )
   }

@@ -8,6 +8,13 @@ import { useResolvedTheme } from '@/hooks/use-chat-settings'
 import { writeTextToClipboard } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import {
+  capForRender,
+  formatBytes,
+  HIGHLIGHT_CAP_BYTES,
+  MAX_GUTTER_LINES,
+  RENDER_CAP_BYTES,
+} from '@/lib/render-size-guard'
 
 type CodeBlockProps = {
   content: string
@@ -41,19 +48,29 @@ export function CodeBlock({
   const [resolvedLanguage, setResolvedLanguage] = useState('text')
   const [headerBg, setHeaderBg] = useState<string | undefined>()
 
-  const fallback = useMemo(() => {
-    return content
-  }, [content])
+  // Cap oversized blocks before they reach shiki/the DOM — a multi-MB code
+  // fence can OOM the tab. capForRender also records the real size for the
+  // freeze-watchdog. The Copy button still copies the full original content.
+  const capped = capForRender(content, `code-block:${language || 'text'}`)
+  const displayContent = capped.text
+  const tooBigToHighlight =
+    capped.truncated || content.length > HIGHLIGHT_CAP_BYTES
 
   const normalizedLanguage = normalizeLanguage(language || 'text')
   const themeName = resolvedTheme === 'dark' ? 'vitesse-dark' : 'vitesse-light'
   const lineCount = useMemo(
-    () => Math.max(1, content.split('\n').length),
-    [content],
+    () => Math.max(1, displayContent.split('\n').length),
+    [displayContent],
   )
-  const canShowLineNumbers = lineCount > 1
+  const canShowLineNumbers = lineCount > 1 && lineCount <= MAX_GUTTER_LINES
 
   useEffect(() => {
+    // Don't tokenize oversized blocks — shiki on a multi-MB string is itself a
+    // major allocation spike. Fall back to plain (truncated) text.
+    if (tooBigToHighlight) {
+      setHtml(null)
+      return
+    }
     let active = true
     getHighlighter()
       .then(async (highlighter) => {
@@ -65,7 +82,7 @@ export function CodeBlock({
             lang = 'text'
           }
         }
-        const highlighted = highlighter.codeToHtml(content, {
+        const highlighted = highlighter.codeToHtml(displayContent, {
           lang: lang as BundledLanguage,
           theme: themeName,
         })
@@ -82,7 +99,7 @@ export function CodeBlock({
     return () => {
       active = false
     }
-  }, [content, normalizedLanguage, themeName])
+  }, [displayContent, tooBigToHighlight, normalizedLanguage, themeName])
 
   async function handleCopy() {
     try {
@@ -94,7 +111,7 @@ export function CodeBlock({
     }
   }
 
-  const isSingleLine = content.split('\n').length === 1
+  const isSingleLine = displayContent.split('\n').length === 1
   const displayLanguage = formatLanguageName(resolvedLanguage)
 
   return (
@@ -168,11 +185,28 @@ export function CodeBlock({
                 isSingleLine ? 'whitespace-pre px-3 py-2' : 'px-3 py-3',
               )}
             >
-              <code>{fallback}</code>
+              <code>{displayContent}</code>
             </pre>
           )}
         </div>
       </div>
+      {capped.truncated ? (
+        <div className="flex items-center justify-between gap-2 border-t border-primary-200 bg-primary-50/80 px-3 py-1.5 text-xs text-primary-600">
+          <span>
+            Truncated for safety — showing {formatBytes(RENDER_CAP_BYTES)} of{' '}
+            {formatBytes(capped.originalBytes)}.
+          </span>
+          <Button
+            variant="ghost"
+            className="h-auto shrink-0 px-0 text-xs font-medium text-primary-500 hover:bg-transparent hover:text-primary-800"
+            onClick={() => {
+              handleCopy().catch(() => {})
+            }}
+          >
+            Copy full
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
