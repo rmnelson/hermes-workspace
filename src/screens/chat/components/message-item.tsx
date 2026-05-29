@@ -31,6 +31,7 @@ import {
   useChatSettingsStore,
 } from '@/hooks/use-chat-settings'
 import { cn } from '@/lib/utils'
+import { notePayloadSize } from '@/lib/freeze-watchdog'
 import {
   buildHermesActivitySummary,
   shouldAutoExpandHermesActivityCard,
@@ -2068,8 +2069,16 @@ function MessageItemComponent({
   const displayWordCount = countWords(displayText)
   const revealComplete =
     revealedWordCount >= displayWordCount && displayWordCount > 0
+  // For very large messages, skip the per-tick word-by-word reveal: re-slicing
+  // a multi-100KB string every 50ms churns memory hard. Render the text in full
+  // instead (streaming chunks still update it; we just drop the animation).
+  // Also records the size for the freeze-watchdog so a freeze report names it.
+  const HUGE_MESSAGE_BYTES = 100_000
+  const isHugeMessage = displayText.length > HUGE_MESSAGE_BYTES
+  notePayloadSize('message-text', displayText.length)
   const effectiveIsStreaming =
-    remoteStreamingActive || (_simulateStreaming && !revealComplete)
+    (remoteStreamingActive || (_simulateStreaming && !revealComplete)) &&
+    !isHugeMessage
   const assistantDisplayText = effectiveIsStreaming ? revealedText : displayText
   const assistantCorruptionWarning = useMemo(
     () => detectAssistantCorruptionWarning(role, assistantDisplayText),
