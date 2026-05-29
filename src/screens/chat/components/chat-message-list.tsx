@@ -11,7 +11,6 @@ import {
   textFromMessage,
 } from '../utils'
 import { MessageItem } from './message-item'
-import { TuiActivityCard } from './tui-activity-card'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { ResearchCard } from './research-card'
 import type { ChatMessage } from '../types'
@@ -1852,69 +1851,11 @@ function ChatMessageListComponent({
                   researchCard={researchCard}
                   isCompacting={isCompacting}
                 />
-                {/* Branch from the thinking bubble into a single compact
-                    TUI-style tool activity card. Use normalized streaming calls
-                    so the card appears for both structured tool events and the
-                    lighter live activity feed. */}
-                {normalizedStreamingToolCalls.length > 0 ? (
-                  <div className="flex max-w-[var(--chat-content-max-width)]">
-                    <div
-                      className="ml-[14px] mr-2 w-px shrink-0"
-                      style={{
-                        background:
-                          'linear-gradient(to bottom, color-mix(in srgb, var(--theme-accent) 35%, transparent), color-mix(in srgb, var(--theme-border) 60%, transparent))',
-                      }}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1 pt-1">
-                      <TuiActivityCard
-                        toolSections={normalizedStreamingToolCalls.map((tc) => {
-                          const phase = tc.phase
-                          const state =
-                            phase === 'error'
-                              ? ('output-error' as const)
-                              : phase === 'done'
-                                ? ('output-available' as const)
-                                : phase === 'running'
-                                  ? ('input-streaming' as const)
-                                  : ('input-available' as const)
-                          return {
-                            key: tc.id,
-                            type: tc.name,
-                            input:
-                              tc.args &&
-                              typeof tc.args === 'object' &&
-                              !Array.isArray(tc.args)
-                                ? (tc.args as Record<string, unknown>)
-                                : undefined,
-                            preview: tc.preview,
-                            outputText:
-                              state === 'output-available'
-                                ? tc.result || ''
-                                : '',
-                            errorText:
-                              state === 'output-error'
-                                ? tc.result || 'Tool failed'
-                                : undefined,
-                            state,
-                          }
-                        })}
-                        thinking={null}
-                        isStreaming={true}
-                        formatLabel={(name) => name.replace(/_/g, ' ')}
-                        formatArg={(_name, args) => {
-                          if (!args) return null
-                          const first = Object.values(args).find(
-                            (v) => typeof v === 'string' && v.trim(),
-                          )
-                          return typeof first === 'string'
-                            ? first.trim()
-                            : null
-                        }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
+                {/* De-duplicated: the live tool activity is now conveyed by the
+                    ThinkingBubble label above (e.g. "🔍 Searching…"), and the
+                    full tool timeline renders on the settled message
+                    (TuiActivityCard above the assistant bubble once text
+                    arrives). We no longer stack a second activity card here. */}
               </div>
             ) : null}
             {notice && noticePosition === 'end' ? notice : null}
