@@ -2753,9 +2753,9 @@ function ChatComposerComponent({
                         setIsThinkingMenuOpen(false)
                         setIsModelMenuOpen(false)
                       }}
-                      className="inline-flex h-8 items-center gap-1 rounded-full bg-primary-100/70 px-2 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-200/80 dark:hover:bg-primary-800/60"
-                      title="Chat controls"
-                      aria-label="Chat controls"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary-100/70 px-2.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-200/80 dark:hover:bg-primary-800/60"
+                      title={`Chat controls · ${modelButtonLabel}`}
+                      aria-label={`Chat controls — model ${modelButtonLabel}`}
                     >
                       <svg
                         width="13"
@@ -2775,6 +2775,9 @@ function ChatComposerComponent({
                         <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
                         <circle cx="11" cy="18" r="2" fill="currentColor" stroke="none" />
                       </svg>
+                      <span className="max-w-[10rem] truncate">
+                        {modelButtonLabel.split('/').pop() ?? modelButtonLabel}
+                      </span>
                       <HugeiconsIcon icon={ArrowDown01Icon} size={11} />
                     </button>
                     {isControlsMenuOpen ? (
@@ -2858,10 +2861,7 @@ function ChatComposerComponent({
                                 setIsProfileMenuOpen(false)
                                 setIsModelMenuOpen(false)
                               }}
-                              className={cn(
-                                'inline-flex h-8 items-center gap-1.5 rounded-full bg-primary-100/70 px-2.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-200/80 dark:hover:bg-primary-800/60',
-                                thinkingLevel === 'off' && 'opacity-70',
-                              )}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary-100/70 px-2.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-200/80 dark:hover:bg-primary-800/60"
                               title={`Reasoning effort: ${thinkingLabel(thinkingLevel)}`}
                             >
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
