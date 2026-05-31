@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   clearFreezeDiagnostics,
   mark,
+  recordReactError,
   reportPriorFreeze,
 } from './freeze-watchdog'
 
@@ -126,5 +127,104 @@ describe('freeze-watchdog breadcrumbs', () => {
     mark('chat', 'session=abc')
     clearFreezeDiagnostics()
     expect(findBreadcrumbKey()).toBeNull()
+  })
+
+  // Load-time freeze: a tab that locks during initial mount/hydration dies
+  // before the heartbeat's first beat, so it has breadcrumbs but NO hb record.
+  // Previously invisible to the reporter; now flagged via the breadcrumb time.
+  it('reports a tab that froze before its first heartbeat (bc, no hb)', () => {
+    const staleIso = new Date(Date.now() - 60_000).toISOString()
+    localStorage.setItem(
+      `${NS}bc:loadfrozen`,
+      `${staleIso} chat-mount session=load-test`,
+    )
+    const report = reportPriorFreeze()
+    expect(report).not.toBeNull()
+    expect(report?.heartbeat).toBeNull()
+    expect(report?.breadcrumbs).toContain('load-test')
+    // Consumed — not re-reported.
+    expect(reportPriorFreeze()).toBeNull()
+  })
+
+  it('does NOT report a tab mid-boot (bc present, within stale window)', () => {
+    const freshIso = new Date(Date.now() - 1_000).toISOString()
+    localStorage.setItem(
+      `${NS}bc:booting`,
+      `${freshIso} chat-mount session=booting`,
+    )
+    expect(reportPriorFreeze()).toBeNull()
+  })
+
+  it('still reports a React error from hours ago (survives overnight)', () => {
+    // Crashes often happen during a long task while the user is away, then get
+    // read many hours later. The retention window must outlast a night's sleep.
+    const threeHoursAgo = Date.now() - 3 * 60 * 60_000
+    localStorage.setItem(
+      `${NS}err:overnight`,
+      JSON.stringify({
+        at: 'last night',
+        ts: threeHoursAgo,
+        name: 'TypeError',
+        message: 'prevDeps is undefined',
+        componentStack: '\n    at AnimatePresence\n    at ScrollToBottomButton',
+      }),
+    )
+    const report = reportPriorFreeze()
+    expect(report).not.toBeNull()
+    expect((report?.reactError as { message?: string })?.message).toContain(
+      'prevDeps',
+    )
+  })
+
+  it('prunes a very old bc-only record without reporting', () => {
+    const ancientIso = new Date(Date.now() - 50 * 60 * 60_000).toISOString()
+    localStorage.setItem(
+      `${NS}bc:ancient`,
+      `${ancientIso} chat session=ancient`,
+    )
+    expect(reportPriorFreeze()).toBeNull()
+    expect(localStorage.getItem(`${NS}bc:ancient`)).toBeNull()
+  })
+
+  it('reports a React error recorded by another tab, with its componentStack', () => {
+    localStorage.setItem(
+      `${NS}err:crashtab`,
+      JSON.stringify({
+        at: 'past',
+        ts: Date.now(),
+        name: 'TypeError',
+        message: 'can\'t access property "length", prevDeps is undefined',
+        componentStack:
+          '\n    at MotionButton\n    at AnimatePresence\n    at ScrollToBottomButton',
+      }),
+    )
+    const report = reportPriorFreeze()
+    expect(report).not.toBeNull()
+    const reactError = report?.reactError as {
+      message?: string
+      componentStack?: string
+    }
+    expect(reactError?.message).toContain('prevDeps is undefined')
+    expect(reactError?.componentStack).toContain('AnimatePresence')
+    // Consumed — not re-reported.
+    expect(reportPriorFreeze()).toBeNull()
+  })
+
+  it('recordReactError persists name, message, and componentStack for this tab', () => {
+    recordReactError(
+      new TypeError('can\'t access property "length", prevDeps is undefined'),
+      '\n    at MotionButton\n    at AnimatePresence',
+    )
+    let raw: string | null = null
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(`${NS}err:`)) raw = localStorage.getItem(k)
+    }
+    expect(raw).not.toBeNull()
+    const rec = JSON.parse(raw!)
+    expect(rec.name).toBe('TypeError')
+    expect(rec.message).toContain('prevDeps is undefined')
+    expect(rec.componentStack).toContain('AnimatePresence')
+    expect(typeof rec.ts).toBe('number')
   })
 })

@@ -1,8 +1,5 @@
 // Module-level local model override — set by composer when user picks a local model
 // Avoids prop threading. Reset when switching back to cloud models.
-export let _localModelOverride = ''
-export function setLocalModelOverride(model: string) { _localModelOverride = model }
-
 import {
   useCallback,
   useEffect,
@@ -21,12 +18,12 @@ import {
   textFromMessage,
 } from './utils'
 import {
+  
   advanceStickyStreamingText,
-  createResponseWaitSnapshot,
   createOptimisticMessage,
+  createResponseWaitSnapshot,
   isTerminalActiveRunStatus,
-  shouldClearWaitingForAssistantMessage,
-  type ResponseWaitSnapshot,
+  shouldClearWaitingForAssistantMessage
 } from './chat-screen-utils'
 import {
   appendHistoryMessage,
@@ -43,21 +40,19 @@ import { ChatEmptyState } from './components/chat-empty-state'
 import { ChatComposer } from './components/chat-composer'
 import { ConnectionStatusMessage } from './components/connection-status-message'
 import {
+  clearPendingSendForSession,
   consumePendingSend,
   hasPendingGeneration,
   hasPendingSend,
   isRecentSession,
   resetPendingSend,
   setPendingGeneration,
-  clearPendingSendForSession,
 } from './pending-send'
 import { useChatMeasurements } from './hooks/use-chat-measurements'
 import { useChatHistory } from './hooks/use-chat-history'
 import { useRealtimeChatHistory } from './hooks/use-realtime-chat-history'
 import { useSmoothStreamingText } from './hooks/use-smooth-streaming-text'
 import { useStreamingMessage } from './hooks/use-streaming-message'
-import { playChatComplete } from '@/lib/sounds'
-import { useChatSettingsStore } from '@/hooks/use-chat-settings'
 import { useActiveRunCheck } from './hooks/use-active-run-check'
 import { useChatMobile } from './hooks/use-chat-mobile'
 import { useChatSessions } from './hooks/use-chat-sessions'
@@ -70,6 +65,7 @@ import {
   CHAT_PENDING_COMMAND_STORAGE_KEY,
   CHAT_RUN_COMMAND_EVENT,
 } from './chat-events'
+import type {ResponseWaitSnapshot} from './chat-screen-utils';
 import type {
   ChatComposerAttachment,
   ChatComposerHandle,
@@ -79,6 +75,9 @@ import type {
 import type { ApprovalRequest } from '@/screens/gateway/lib/approvals-store'
 import type { ChatAttachment, ChatMessage, SessionMeta } from './types'
 import type { ChatRunCommandDetail } from './chat-events'
+import type {AgentActivity} from '@/stores/chat-activity-store';
+import { useChatSettingsStore } from '@/hooks/use-chat-settings'
+import { playChatComplete } from '@/lib/sounds'
 import {
   addApproval,
   loadApprovals,
@@ -102,12 +101,20 @@ import { MobileSessionsPanel } from '@/components/mobile-sessions-panel'
 import { ContextAlertModal } from '@/components/usage-meter/context-alert-modal'
 import { ErrorToastContainer, showErrorToast } from '@/components/error-toast'
 // ContextMeter removed — ContextBar (PR #32) replaces it
-import { useChatStore, persistRecoveryMessage } from '@/stores/chat-store'
+import { persistRecoveryMessage, useChatStore } from '@/stores/chat-store'
 import { useResearchCard } from '@/hooks/use-research-card'
 // MOBILE_TAB_BAR_OFFSET removed — tab bar always hidden in chat
 import { useTapDebug } from '@/hooks/use-tap-debug'
 import { useChatMode } from '@/hooks/use-chat-mode'
-import { useChatActivityStore, type AgentActivity } from '@/stores/chat-activity-store'
+import {
+  
+  useChatActivityStore
+} from '@/stores/chat-activity-store'
+
+export let _localModelOverride = ''
+export function setLocalModelOverride(model: string) {
+  _localModelOverride = model
+}
 
 type ChatScreenProps = {
   activeFriendlyId: string
@@ -468,6 +475,19 @@ export function ChatScreen({
   // Recover (instead of locking the tab) if this screen falls into a re-render
   // loop. Must be the first hook so hook order stays stable across renders.
   useRenderLoopGuard('ChatScreen')
+
+  // Load-milestone breadcrumb: fires once when this ChatScreen instance first
+  // renders, before the heavy hooks below. A load-time freeze locks before the
+  // heartbeat's first beat, so the breadcrumb trail is the only signal of how
+  // far boot got. If the last persisted crumb is 'chat-mount' (not the later
+  // 'chat' render crumb), the freeze was during this screen's hook init — see
+  // freeze-watchdog.ts reportPriorFreeze.
+  const mountMarkedRef = useRef(false)
+  if (!mountMarkedRef.current) {
+    mountMarkedRef.current = true
+    mark('chat-mount', `friendlyId=${activeFriendlyId}`)
+  }
+
   const navigate = useNavigate()
   const chatFocusMode = useWorkspaceStore((s) => s.chatFocusMode)
   const setChatFocusMode = useWorkspaceStore((s) => s.setChatFocusMode)
@@ -638,7 +658,8 @@ export function ChatScreen({
   // If so, re-set waitingForResponse in the store so the UI shows the spinner.
   useActiveRunCheck({
     sessionKey: resolvedSessionKey ?? '',
-    enabled: !isNewChat && Boolean(resolvedSessionKey) && historyQuery.isSuccess,
+    enabled:
+      !isNewChat && Boolean(resolvedSessionKey) && historyQuery.isSuccess,
     onCheckComplete: useCallback(() => {
       setActiveRunCheckDone(true)
     }, []),
@@ -664,9 +685,9 @@ export function ChatScreen({
       : isNewChat
         ? 'new'
         : resolvedSessionKey ||
-        sessionKeyForHistory ||
-        activeCanonicalKey ||
-        'main',
+          sessionKeyForHistory ||
+          activeCanonicalKey ||
+          'main',
     friendlyId: portableChatFriendlyId,
     historyMessages,
     portableMode: isPortableMode,
@@ -698,7 +719,9 @@ export function ChatScreen({
       if (
         approvalId &&
         currentApprovals.some((entry) => {
-          return entry.status === 'pending' && entry.gatewayApprovalId === approvalId
+          return (
+            entry.status === 'pending' && entry.gatewayApprovalId === approvalId
+          )
         })
       ) {
         setPendingApprovals(
@@ -998,7 +1021,8 @@ export function ChatScreen({
     ],
     queryFn: async () => {
       try {
-        const statusSessionKey = resolvedSessionKey || activeFriendlyId || 'main'
+        const statusSessionKey =
+          resolvedSessionKey || activeFriendlyId || 'main'
         const query = statusSessionKey
           ? `?sessionKey=${encodeURIComponent(statusSessionKey)}`
           : ''
@@ -1137,36 +1161,39 @@ export function ChatScreen({
       },
       [queryClient],
     ),
-    onComplete: useCallback((message: ChatMessage) => {
-      const activeSend = activeSendRef.current
-      if (activeSend?.clientId) {
-        updateHistoryMessageByClientIdEverywhere(
-          queryClient,
-          activeSend.clientId,
-          (message) => ({
-            ...message,
-            status: 'done',
-          }),
-        )
-      }
-      if (activeSend?.sessionKey) {
-        persistRecoveryMessage(activeSend.sessionKey, message)
-        clearPendingSendForSession(
-          activeSend.sessionKey,
-          activeSend.friendlyId,
-        )
-      }
-      activeSendRef.current = null
-      refreshHistoryRef.current()
-      setSending(false)
-      // Clear waitingForResponse so ThinkingBubble hides and message renders
-      streamFinish()
-      // Play notification sound if the user opted in (Settings → Chat).
-      // Read directly from the store to avoid re-creating this callback on every settings change.
-      if (useChatSettingsStore.getState().settings.soundOnChatComplete) {
-        playChatComplete()
-      }
-    }, [queryClient, streamFinish]),
+    onComplete: useCallback(
+      (message: ChatMessage) => {
+        const activeSend = activeSendRef.current
+        if (activeSend?.clientId) {
+          updateHistoryMessageByClientIdEverywhere(
+            queryClient,
+            activeSend.clientId,
+            (message) => ({
+              ...message,
+              status: 'done',
+            }),
+          )
+        }
+        if (activeSend?.sessionKey) {
+          persistRecoveryMessage(activeSend.sessionKey, message)
+          clearPendingSendForSession(
+            activeSend.sessionKey,
+            activeSend.friendlyId,
+          )
+        }
+        activeSendRef.current = null
+        refreshHistoryRef.current()
+        setSending(false)
+        // Clear waitingForResponse so ThinkingBubble hides and message renders
+        streamFinish()
+        // Play notification sound if the user opted in (Settings → Chat).
+        // Read directly from the store to avoid re-creating this callback on every settings change.
+        if (useChatSettingsStore.getState().settings.soundOnChatComplete) {
+          playChatComplete()
+        }
+      },
+      [queryClient, streamFinish],
+    ),
     onError: useCallback(
       (messageText: string) => {
         const activeSend = activeSendRef.current
@@ -1286,10 +1313,12 @@ export function ChatScreen({
     activeRealtimeStreamingText,
     activeIsRealtimeStreaming,
   )
-  const stickyStreamingTextRef = useRef<{ runId: string | null; text: string }>({
-    runId: null,
-    text: '',
-  })
+  const stickyStreamingTextRef = useRef<{ runId: string | null; text: string }>(
+    {
+      runId: null,
+      text: '',
+    },
+  )
   stickyStreamingTextRef.current = advanceStickyStreamingText({
     isStreaming: activeIsRealtimeStreaming,
     runId: streamingRunId ?? null,
@@ -1554,9 +1583,9 @@ export function ChatScreen({
   }, [suggestion, resolvedSessionKey, dismiss])
 
   // Sync chat activity to global store for sidebar orchestrator avatar
-  const setLocalActivity = useChatActivityStore(
-    (s) => s.setLocalActivity,
-  ) as (next: AgentActivity) => void
+  const setLocalActivity = useChatActivityStore((s) => s.setLocalActivity) as (
+    next: AgentActivity,
+  ) => void
   useEffect(() => {
     if (liveToolActivity.length > 0) {
       setLocalActivity('tool-use')

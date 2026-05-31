@@ -33,8 +33,11 @@ const NS = 'hermes:freeze:'
 const HEARTBEAT_MS = 1000
 // A still-visible tab silent longer than this is treated as abandoned (froze).
 const STALE_MS = 25_000
-// Records older than this are pruned on next load regardless.
-const PRUNE_MS = 30 * 60_000
+// Records older than this are pruned on next load regardless. Kept long
+// (48h) because crashes frequently happen during a long unattended task and
+// aren't read until the user returns hours later — a short window would drop
+// exactly the overnight crashes we most want to see.
+const PRUNE_MS = 48 * 60 * 60_000
 
 let _tabId = ''
 function tabId(): string {
@@ -107,7 +110,41 @@ export function mark(tag: string, info?: string): void {
 }
 
 function clearOwnRecords(): void {
-  for (const kind of ['hb', 'bc', 'loop', 'lt']) safeRemove(key(kind))
+  for (const kind of ['hb', 'bc', 'loop', 'lt', 'err']) safeRemove(key(kind))
+}
+
+/**
+ * Persist a React error caught by an ErrorBoundary so it outlives the tab. The
+ * `componentStack` names the component whose render/hooks threw — the single
+ * most useful clue for an intermittent crash (e.g. a motion `usePresence` hook
+ * mismatch that only surfaces mid-stream). Stored per-tab like the heartbeat and
+ * surfaced by `reportPriorFreeze()` on the next load or from a sibling tab, and
+ * snapshots the recent breadcrumb trail for context. Best-effort; never throws.
+ */
+export function recordReactError(
+  error: unknown,
+  componentStack?: string,
+): void {
+  if (typeof window === 'undefined') return
+  const name = error instanceof Error ? error.name : 'Error'
+  const message =
+    error instanceof Error ? error.message : String(error ?? 'unknown error')
+  safeSet(
+    key('err'),
+    JSON.stringify({
+      at: new Date().toISOString(),
+      ts: Date.now(),
+      name,
+      message,
+      componentStack: componentStack ?? '',
+      lastTag,
+      url:
+        typeof location !== 'undefined'
+          ? location.pathname + location.search
+          : '',
+    }),
+  )
+  flushCrumbs()
 }
 
 let watchdogStarted = false
@@ -246,7 +283,24 @@ export type FreezeReport = {
   heartbeat: unknown
   renderLoop: unknown
   longTask: unknown
+  reactError: unknown
   breadcrumbs: string
+}
+
+/**
+ * Parse the timestamp of the last breadcrumb line. Breadcrumbs are stored as
+ * `<ISO timestamp> <tag...>` lines (see `mark`), so the final line's leading
+ * token is an ISO date. Returns epoch ms, or 0 if unparseable/empty. Used to
+ * timestamp a tab that froze before its first heartbeat fired (no `hb` record).
+ */
+function lastCrumbTs(bc: string | undefined): number {
+  if (!bc) return 0
+  const lines = bc.split('\n')
+  const last = lines[lines.length - 1]
+  if (!last) return 0
+  const iso = last.split(' ')[0]
+  const ms = Date.parse(iso)
+  return Number.isNaN(ms) ? 0 : ms
 }
 
 /**
@@ -260,7 +314,7 @@ export function reportPriorFreeze(): FreezeReport | null {
   if (typeof window === 'undefined') return null
 
   const me = tabId()
-  let keys: Array<string> = []
+  const keys: Array<string> = []
   try {
     for (let i = 0; i < localStorage.length; i += 1) {
       const k = localStorage.key(i)
@@ -275,6 +329,7 @@ export function reportPriorFreeze(): FreezeReport | null {
     bc?: string
     loop?: ({ ts?: number } & Record<string, unknown>) | null
     lt?: ({ ts?: number } & Record<string, unknown>) | null
+    err?: ({ ts?: number } & Record<string, unknown>) | null
   }
   const byTab = new Map<string, TabRecord>()
   for (const k of keys) {
@@ -288,7 +343,12 @@ export function reportPriorFreeze(): FreezeReport | null {
     const raw = safeGet(k)
     if (kind === 'bc') {
       entry.bc = raw ?? ''
-    } else if (kind === 'hb' || kind === 'loop' || kind === 'lt') {
+    } else if (
+      kind === 'hb' ||
+      kind === 'loop' ||
+      kind === 'lt' ||
+      kind === 'err'
+    ) {
       try {
         ;(entry as Record<string, unknown>)[kind] = raw ? JSON.parse(raw) : null
       } catch {
@@ -303,27 +363,49 @@ export function reportPriorFreeze(): FreezeReport | null {
   let best: { id: string; entry: TabRecord; ts: number } | null = null
 
   for (const [id, entry] of byTab) {
-    const ts = entry.loop?.ts ?? entry.lt?.ts ?? entry.hb?.ts ?? 0
+    // A tab that froze during initial load/hydration locks before the heartbeat
+    // interval's first beat fires, so it leaves breadcrumbs but NO `hb` record.
+    // Fall back to the last breadcrumb's timestamp so these pre-heartbeat deaths
+    // still get a usable time for staleness + pruning, and can be reported.
+    const bcTs = entry.hb?.ts ? 0 : lastCrumbTs(entry.bc)
+    const ts =
+      entry.err?.ts ?? entry.loop?.ts ?? entry.lt?.ts ?? entry.hb?.ts ?? bcTs
     if (ts > 0 && now - ts > PRUNE_MS) {
-      for (const kind of ['hb', 'bc', 'loop', 'lt']) safeRemove(key(kind, id))
+      for (const kind of ['hb', 'bc', 'loop', 'lt', 'err'])
+        safeRemove(key(kind, id))
       continue
     }
     const staleWhileVisible = Boolean(
       entry.hb?.ts && entry.hb.visible && now - entry.hb.ts > STALE_MS,
     )
-    const isCandidate = Boolean(entry.loop) || Boolean(entry.lt) || staleWhileVisible
+    // Pre-heartbeat death: breadcrumbs present, no heartbeat, and the trail has
+    // gone quiet past the stale window. The stale check avoids flagging a tab
+    // that is merely mid-boot right now (bc written, first beat imminent). A
+    // clean exit clears `bc` via pagehide, so its survival here means the tab
+    // did NOT exit cleanly — it froze.
+    const frozeBeforeHeartbeat = Boolean(
+      !entry.hb && entry.bc && bcTs > 0 && now - bcTs > STALE_MS,
+    )
+    const isCandidate =
+      Boolean(entry.err) ||
+      Boolean(entry.loop) ||
+      Boolean(entry.lt) ||
+      staleWhileVisible ||
+      frozeBeforeHeartbeat
     if (isCandidate && (!best || ts > best.ts)) best = { id, entry, ts }
   }
 
   if (!best) return null
 
   // Consume it so it isn't re-reported on the next load.
-  for (const kind of ['hb', 'bc', 'loop', 'lt']) safeRemove(key(kind, best.id))
+  for (const kind of ['hb', 'bc', 'loop', 'lt', 'err'])
+    safeRemove(key(kind, best.id))
 
   const report: FreezeReport = {
     heartbeat: best.entry.hb ?? null,
     renderLoop: best.entry.loop ?? null,
     longTask: best.entry.lt ?? null,
+    reactError: best.entry.err ?? null,
     breadcrumbs: best.entry.bc ?? '',
   }
   console.warn(
