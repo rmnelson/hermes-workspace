@@ -302,14 +302,50 @@ function mapToolCallToToolPart(
   }
 }
 
-function toolCallsSignature(message: ChatMessage): string {
+/**
+ * Bounded fingerprint of a string: length + head + tail. Used by the memoization
+ * signatures below INSTEAD of embedding the whole value.
+ *
+ * Why: these signatures run inside `areMessagesEqual`, which React calls on every
+ * render of every message. A full `JSON.stringify` of tool args/results made that
+ * cost scale with total tool-output size — megabytes re-serialized on every
+ * settle render of a long session, a prime cause of the settle-time freeze. A
+ * length+head+tail fingerprint is O(1)-ish yet still changes when the content
+ * grows or its edges change (covers streaming appends and edits). Two different
+ * strings of equal length that differ ONLY in their interior are treated as
+ * equal — an acceptable, rare false-negative for a re-render heuristic (the
+ * background history refetch reconciles anything missed).
+ */
+const SIGNATURE_EDGE = 64
+function fingerprint(value: string): string {
+  const len = value.length
+  if (len <= SIGNATURE_EDGE * 2) return `${len}:${value}`
+  return `${len}:${value.slice(0, SIGNATURE_EDGE)}…${value.slice(-SIGNATURE_EDGE)}`
+}
+
+/** Fingerprint an arbitrary value without serializing the whole thing when huge. */
+function fingerprintValue(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return fingerprint(value)
+  try {
+    return fingerprint(JSON.stringify(value) ?? '')
+  } catch {
+    return 'unserializable'
+  }
+}
+
+export function toolCallsSignature(message: ChatMessage): string {
   const toolCalls = getToolCallsFromMessage(message)
   return toolCalls
     .map((toolCall) => {
       const id = toolCall.id ?? ''
       const name = toolCall.name ?? ''
-      const partialJson = toolCall.partialJson ?? ''
-      const args = toolCall.arguments ? JSON.stringify(toolCall.arguments) : ''
+      const partialJson = toolCall.partialJson
+        ? fingerprint(toolCall.partialJson)
+        : ''
+      const args = toolCall.arguments
+        ? fingerprintValue(toolCall.arguments)
+        : ''
       return `${id}|${name}|${partialJson}|${args}`
     })
     .join('||')
@@ -322,11 +358,11 @@ function toolResultSignature(result: ChatMessage | undefined): string {
     .map((part) => (part.type === 'text' ? String(part.text ?? '') : ''))
     .join('')
     .trim()
-  const details = result.details ? JSON.stringify(result.details) : ''
-  return `${result.toolCallId ?? ''}|${result.toolName ?? ''}|${result.isError ? '1' : '0'}|${text}|${details}`
+  const details = result.details ? fingerprintValue(result.details) : ''
+  return `${result.toolCallId ?? ''}|${result.toolName ?? ''}|${result.isError ? '1' : '0'}|${fingerprint(text)}|${details}`
 }
 
-function toolResultsSignature(
+export function toolResultsSignature(
   message: ChatMessage,
   toolResultsByCallId: Map<string, ChatMessage> | undefined,
 ): string {
@@ -1380,7 +1416,9 @@ type InlineArtifactParseResult = {
   artifacts: Array<InlineArtifact>
 }
 
-function parseArtifactAttributes(rawAttributes: string): Record<string, string> {
+function parseArtifactAttributes(
+  rawAttributes: string,
+): Record<string, string> {
   const attributes: Record<string, string> = {}
   const attributeRegex = /(\w+)=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g
 
@@ -1478,14 +1516,17 @@ function InlineArtifactCard({ artifact }: { artifact: InlineArtifact }) {
         className="rounded-xl border p-3"
         style={{
           borderColor: 'var(--chat-assistant-border)',
-          background: 'color-mix(in srgb, var(--chat-assistant-bg) 85%, white 15%)',
+          background:
+            'color-mix(in srgb, var(--chat-assistant-bg) 85%, white 15%)',
         }}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span aria-hidden="true">🧩</span>
-              <span className="truncate text-sm font-semibold">{artifact.title}</span>
+              <span className="truncate text-sm font-semibold">
+                {artifact.title}
+              </span>
               <span
                 className="rounded-full px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
                 style={{
@@ -1507,10 +1548,17 @@ function InlineArtifactCard({ artifact }: { artifact: InlineArtifact }) {
       </div>
       <DialogRoot open={open} onOpenChange={setOpen}>
         <DialogContent className="w-[min(1100px,96vw)] max-h-[92vh]">
-          <div className="flex items-center justify-between gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--theme-border)' }}>
+          <div
+            className="flex items-center justify-between gap-3 border-b px-4 py-3"
+            style={{ borderColor: 'var(--theme-border)' }}
+          >
             <div className="min-w-0">
-              <DialogTitle className="truncate text-base">{artifact.title}</DialogTitle>
-              <div className="text-xs uppercase tracking-wide opacity-70">{artifact.type}</div>
+              <DialogTitle className="truncate text-base">
+                {artifact.title}
+              </DialogTitle>
+              <div className="text-xs uppercase tracking-wide opacity-70">
+                {artifact.type}
+              </div>
             </div>
             <DialogClose>Close</DialogClose>
           </div>
@@ -1634,9 +1682,12 @@ function InlineToolSectionItem({
     toolSection.input && Object.keys(toolSection.input).length > 0
   const hasOutputData = !!(toolSection.outputText || toolSection.errorText)
   const isArtifact = toolSection.type.startsWith('artifact:')
-  const artifactKind = isArtifact ? toolSection.type.slice('artifact:'.length) : null
+  const artifactKind = isArtifact
+    ? toolSection.type.slice('artifact:'.length)
+    : null
   const artifactTitle =
-    typeof toolSection.input?.title === 'string' && toolSection.input.title.trim()
+    typeof toolSection.input?.title === 'string' &&
+    toolSection.input.title.trim()
       ? toolSection.input.title.trim()
       : 'Artifact'
   const artifactPath =
@@ -1658,14 +1709,18 @@ function InlineToolSectionItem({
         style={{
           background: 'color-mix(in srgb, var(--theme-card2) 76%, transparent)',
           borderColor: 'var(--theme-border)',
-          boxShadow: isRunning ? '0 0 0 1px color-mix(in srgb, var(--theme-accent) 18%, transparent)' : undefined,
+          boxShadow: isRunning
+            ? '0 0 0 1px color-mix(in srgb, var(--theme-accent) 18%, transparent)'
+            : undefined,
         }}
         onClick={() => setOpen((v) => !v)}
         role="button"
         tabIndex={0}
       >
         <div className="flex items-center gap-2 px-3 py-2">
-          <span className="text-sm leading-none shrink-0 opacity-80">{icon}</span>
+          <span className="text-sm leading-none shrink-0 opacity-80">
+            {icon}
+          </span>
           <span className="font-medium text-[12px] text-[var(--theme-text)]">
             {toolDisplayLabel}
           </span>
@@ -1715,7 +1770,9 @@ function InlineToolSectionItem({
               <div className="flex items-start justify-between gap-3 px-3 py-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm" aria-hidden="true">📄</span>
+                    <span className="text-sm" aria-hidden="true">
+                      📄
+                    </span>
                     <span className="truncate text-sm font-semibold text-[var(--theme-text)]">
                       {artifactTitle}
                     </span>
@@ -2727,12 +2784,14 @@ function MessageItemComponent({
                   ) : null}
                   {parsedInlineArtifacts.artifacts.length > 0 ? (
                     <div className="mt-3 flex flex-col gap-3">
-                      {parsedInlineArtifacts.artifacts.map((artifact, index) => (
-                        <InlineArtifactCard
-                          key={`${artifact.title}-${artifact.type}-${index}`}
-                          artifact={artifact}
-                        />
-                      ))}
+                      {parsedInlineArtifacts.artifacts.map(
+                        (artifact, index) => (
+                          <InlineArtifactCard
+                            key={`${artifact.title}-${artifact.type}-${index}`}
+                            artifact={artifact}
+                          />
+                        ),
+                      )}
                     </div>
                   ) : null}
                   {effectiveIsStreaming && parsedInlineArtifacts.cleanedText ? (

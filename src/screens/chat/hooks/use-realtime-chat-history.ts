@@ -68,6 +68,47 @@ function attachmentSignature(message: ChatMessage): string {
     .join('|')
 }
 
+/**
+ * Last 64 chars of an assistant message's text — used as a cheap identity tail
+ * to check whether a just-completed message is already in the history cache.
+ * Reads the content-array format and the legacy top-level `text` field.
+ */
+export function assistantContentTail(message: {
+  content?: unknown
+  text?: unknown
+  [key: string]: unknown
+}): string {
+  // Prefer the content-array text (modern canonical). `.toString()` on a content
+  // array yields "[object Object]" — the original code did exactly that, so its
+  // tail-match silently never matched content-array messages. Use textFromMessage
+  // (handles the array) and fall back to the legacy top-level `text` field.
+  const fromContent = textFromMessage(message as ChatMessage).trim()
+  const text =
+    fromContent.length > 0
+      ? fromContent
+      : typeof message.text === 'string'
+        ? message.text
+        : ''
+  return text.slice(-64)
+}
+
+/**
+ * Whether an assistant message matching `completed` (by role + content tail) is
+ * already present in `messages`. Used to avoid a duplicate when we upsert the
+ * just-completed assistant message into history at settle.
+ */
+export function isAssistantMessagePresent(
+  messages: Array<Record<string, unknown>>,
+  completed: { content?: unknown; text?: unknown; [key: string]: unknown },
+): boolean {
+  const tail = assistantContentTail(completed)
+  return messages.some(
+    (m) =>
+      m.role === 'assistant' &&
+      assistantContentTail(m as { content?: unknown; text?: unknown }) === tail,
+  )
+}
+
 function persistPortableHistory(messages: Array<ChatMessage>) {
   if (typeof window === 'undefined') return
 
@@ -196,7 +237,9 @@ export function useRealtimeChatHistory({
           if (
             msgText.startsWith('Pre-compaction memory flush') ||
             msgText.startsWith('Store durable memories now') ||
-            msgText.startsWith('APPEND new content only and do not overwrite') ||
+            msgText.startsWith(
+              'APPEND new content only and do not overwrite',
+            ) ||
             msgText.startsWith('A subagent task') ||
             msgText.startsWith('[Queued announce messages') ||
             msgText.startsWith('Summarize this naturally for the user') ||
@@ -382,54 +425,73 @@ export function useRealtimeChatHistory({
             const completedAssistant =
               realtimeMessages.length > 0
                 ? (() => {
-                    const last = realtimeMessages[realtimeMessages.length - 1] as
-                      | Record<string, unknown>
-                      | undefined
+                    const last = realtimeMessages[
+                      realtimeMessages.length - 1
+                    ] as Record<string, unknown> | undefined
                     return last?.role === 'assistant' ? last : null
                   })()
                 : null
 
-            // Clear realtime buffer immediately — no more stale data in render
+            // Persist the completed assistant message into the history cache
+            // SYNCHRONOUSLY, BEFORE clearing the realtime buffer — do not depend
+            // on the async refetch below. If the tab freezes/crashes during this
+            // settle render (the OOM/usePresence failure mode), the realtime
+            // buffer is gone but the durable cache already holds the message, so
+            // it isn't lost on reload. Fixes the "last response not saved" symptom.
+            if (completedAssistant) {
+              const cacheData =
+                queryClient.getQueryData<Record<string, unknown>>(key)
+              const cachedMessages =
+                (cacheData?.messages as Array<Record<string, unknown>>) ?? []
+              if (
+                !isAssistantMessagePresent(cachedMessages, completedAssistant)
+              ) {
+                appendHistoryMessage(
+                  queryClient,
+                  effectiveFriendlyId,
+                  effectiveSessionKey,
+                  completedAssistant as unknown as ChatMessage,
+                )
+              }
+            }
+
+            // Clear realtime buffer now that the message is durable in the cache.
             store.clearRealtimeBuffer(effectiveSessionKey)
             clearCompletedStreaming()
 
-            // Background refetch for long-term consistency — doesn't block render
-            queryClient.invalidateQueries({ queryKey: key, refetchType: 'all' }).then(() => {
-              // Re-inject the completed assistant message if compaction dropped it
-              if (completedAssistant) {
+            // Background refetch for long-term consistency — doesn't block render.
+            // Re-assert the completed message afterward in case compaction dropped
+            // it from the server-side history the refetch returns.
+            queryClient
+              .invalidateQueries({ queryKey: key, refetchType: 'all' })
+              .then(() => {
+                if (!completedAssistant) return
                 const refetchData =
                   queryClient.getQueryData<Record<string, unknown>>(key)
                 const refetchedMessages =
-                  (refetchData?.messages as Array<Record<string, unknown>>) ?? []
-                const assistantTail = (completedAssistant.content ?? completedAssistant.text ?? '')
-                  .toString()
-                  .slice(-64)
-                const alreadyPresent = refetchedMessages.some(
-                  (m) =>
-                    m.role === 'assistant' &&
-                    ((m.content ?? m.text ?? '') as string).toString().slice(-64) === assistantTail,
-                )
-                if (!alreadyPresent) {
+                  (refetchData?.messages as Array<Record<string, unknown>>) ??
+                  []
+                if (
+                  !isAssistantMessagePresent(
+                    refetchedMessages,
+                    completedAssistant,
+                  )
+                ) {
                   appendHistoryMessage(
                     queryClient,
                     effectiveFriendlyId,
                     effectiveSessionKey,
-                    completedAssistant as unknown as import('@/types/chat').ChatMessage,
+                    completedAssistant as unknown as ChatMessage,
                   )
                 }
-              }
-            })
+              })
 
             // Check for compaction — significant message count drop
             const newData =
               queryClient.getQueryData<Record<string, unknown>>(key)
             const newCount =
               (newData?.messages as Array<unknown> | undefined)?.length ?? 0
-            if (
-              prevCount > 10 &&
-              newCount > 0 &&
-              newCount < prevCount * 0.6
-            ) {
+            if (prevCount > 10 && newCount > 0 && newCount < prevCount * 0.6) {
               onCompactionEnd?.()
               toast(
                 'Context compacted — older messages were summarized to free up space',
