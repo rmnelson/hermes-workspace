@@ -52,6 +52,9 @@ function key(kind: string, id: string = tabId()): string {
   return `${NS}${kind}:${id}`
 }
 
+/** Durable, non-tab-scoped key holding the most recent freeze report. */
+const LAST_KEY = `${NS}last`
+
 function safeSet(k: string, v: string): void {
   try {
     localStorage.setItem(k, v)
@@ -408,6 +411,14 @@ export function reportPriorFreeze(): FreezeReport | null {
     reactError: best.entry.err ?? null,
     breadcrumbs: best.entry.bc ?? '',
   }
+  // Durable copy: the per-tab source records above are consumed (removed) so a
+  // freeze isn't re-reported on every load, and the console line is easily lost
+  // (cleared, or never opened — exactly the unattended-crash case). Persist ONE
+  // stable, non-consumed copy under `last` so a UI banner or a simple read can
+  // surface it any time afterward. Not tab-scoped: it's "the last freeze anyone
+  // saw", and is only overwritten by the next freeze or cleared explicitly.
+  safeSet(LAST_KEY, JSON.stringify({ ...report, reportedAt: Date.now() }))
+
   console.warn(
     '%c[freeze-watchdog] A tab stopped responding before this load:',
     'color:#ef4444;font-weight:bold',
@@ -416,8 +427,28 @@ export function reportPriorFreeze(): FreezeReport | null {
   return report
 }
 
-/** Clear this tab's saved diagnostics. */
+/**
+ * Read the durable copy of the most recent freeze report, if any. Unlike
+ * `reportPriorFreeze()` (which consumes the per-tab source records), this is
+ * idempotent — safe to call from a UI banner on every render. Returns null if
+ * no freeze has been reported (or it was cleared).
+ */
+export function getLastFreezeReport():
+  | (FreezeReport & { reportedAt?: number })
+  | null {
+  if (typeof window === 'undefined') return null
+  const raw = safeGet(LAST_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/** Clear this tab's saved diagnostics and the durable last-freeze report. */
 export function clearFreezeDiagnostics(): void {
   if (typeof window === 'undefined') return
   clearOwnRecords()
+  safeRemove(LAST_KEY)
 }

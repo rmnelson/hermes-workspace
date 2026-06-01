@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   clearFreezeDiagnostics,
+  getLastFreezeReport,
   mark,
   recordReactError,
   reportPriorFreeze,
@@ -226,5 +227,54 @@ describe('freeze-watchdog breadcrumbs', () => {
     expect(rec.message).toContain('prevDeps is undefined')
     expect(rec.componentStack).toContain('AnimatePresence')
     expect(typeof rec.ts).toBe('number')
+  })
+})
+
+describe('durable last-freeze report', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    clearFreezeDiagnostics()
+  })
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('getLastFreezeReport returns null when nothing has been reported', () => {
+    expect(getLastFreezeReport()).toBeNull()
+  })
+
+  it('persists a durable copy of the report that survives being consumed', () => {
+    localStorage.setItem(
+      `${NS}err:crashtab`,
+      JSON.stringify({
+        ts: Date.now(),
+        name: 'TypeError',
+        message: 'prevDeps is undefined',
+        componentStack: '\n    at WorkspaceShell',
+      }),
+    )
+    const live = reportPriorFreeze()
+    expect(live).not.toBeNull()
+    // The per-tab source record is consumed...
+    expect(localStorage.getItem(`${NS}err:crashtab`)).toBeNull()
+    // ...but a durable copy remains, readable without re-running the scan.
+    const durable = getLastFreezeReport()
+    expect(durable).not.toBeNull()
+    expect((durable?.reactError as { message?: string })?.message).toContain(
+      'prevDeps',
+    )
+    // Re-reading does NOT clear it (unlike reportPriorFreeze's source records).
+    expect(getLastFreezeReport()).not.toBeNull()
+  })
+
+  it('clearFreezeDiagnostics removes the durable last report too', () => {
+    localStorage.setItem(
+      `${NS}loop:crashtab`,
+      JSON.stringify({ ts: Date.now(), component: 'ChatMessageList' }),
+    )
+    reportPriorFreeze()
+    expect(getLastFreezeReport()).not.toBeNull()
+    clearFreezeDiagnostics()
+    expect(getLastFreezeReport()).toBeNull()
   })
 })

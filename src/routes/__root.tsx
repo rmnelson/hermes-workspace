@@ -26,6 +26,7 @@ import {
   ONBOARDING_KEY,
 } from '@/components/onboarding/claude-onboarding'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { FreezeReportBanner } from '@/components/freeze-report-banner'
 import { RootError } from './-root-error'
 import { reportPriorFreeze, startFreezeWatchdog } from '@/lib/freeze-watchdog'
 import { LoginScreen } from '@/components/auth/login-screen'
@@ -367,6 +368,7 @@ function RootLayout() {
               <Outlet />
             </ErrorBoundary>
           </WorkspaceShell>
+          <FreezeReportBanner />
           {!isHermesWorldLandingRoute ? <SearchModal /> : null}
           {/* Keep UsageMeter mounted so search-modal OPEN_USAGE still works even when the pill is hidden by default. */}
           {!isGameSurfaceRoute ? (
