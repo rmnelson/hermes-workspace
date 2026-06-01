@@ -26,6 +26,7 @@ import {
   ONBOARDING_KEY,
 } from '@/components/onboarding/claude-onboarding'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { RootError } from './-root-error'
 import { reportPriorFreeze, startFreezeWatchdog } from '@/lib/freeze-watchdog'
 import { LoginScreen } from '@/components/auth/login-screen'
 import { fetchClaudeAuthStatus, type AuthStatus } from '@/lib/claude-auth'
@@ -189,24 +190,7 @@ export const Route = createRootRoute({
 
   shellComponent: RootDocument,
   component: RootLayout,
-  errorComponent: function RootError({ error }) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center bg-primary-50">
-        <h1 className="text-2xl font-semibold text-primary-900 mb-4">
-          Something went wrong
-        </h1>
-        <pre className="p-4 bg-primary-100 rounded-lg text-sm text-primary-700 max-w-full overflow-auto mb-6">
-          {error instanceof Error ? error.message : String(error)}
-        </pre>
-        <button
-          onClick={() => (window.location.href = '/')}
-          className="px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
-        >
-          Return Home
-        </button>
-      </div>
-    )
-  },
+  errorComponent: RootError,
 })
 
 const queryClient = new QueryClient()
@@ -222,7 +206,10 @@ export function wrapInlineScript(source: string): string {
 }
 
 type ServiceWorkerLike = {
-  register: (scriptURL: string, options?: RegistrationOptions) => Promise<unknown>
+  register: (
+    scriptURL: string,
+    options?: RegistrationOptions,
+  ) => Promise<unknown>
 }
 
 type CachesLike = {
@@ -253,13 +240,18 @@ export async function registerAppServiceWorker({
 
 function RootLayout() {
   const { settings } = useSettings()
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   const isHermesWorldLandingRoute =
     pathname === '/hermes-world' ||
     pathname.startsWith('/hermes-world/') ||
     pathname === '/world' ||
     pathname.startsWith('/world/')
-  const isGameSurfaceRoute = isHermesWorldLandingRoute || pathname === '/playground' || pathname.startsWith('/playground/')
+  const isGameSurfaceRoute =
+    isHermesWorldLandingRoute ||
+    pathname === '/playground' ||
+    pathname.startsWith('/playground/')
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null,
   )
@@ -377,10 +369,13 @@ function RootLayout() {
           </WorkspaceShell>
           {!isHermesWorldLandingRoute ? <SearchModal /> : null}
           {/* Keep UsageMeter mounted so search-modal OPEN_USAGE still works even when the pill is hidden by default. */}
-          {!isGameSurfaceRoute ? <UsageMeter visible={settings.showUsageMeter} /> : null}
+          {!isGameSurfaceRoute ? (
+            <UsageMeter visible={settings.showUsageMeter} />
+          ) : null}
           {!isHermesWorldLandingRoute ? <KeyboardShortcutsModal /> : null}
           {!isHermesWorldLandingRoute ? <UpdateCenterNotifier /> : null}
-          {rootSurfaceState.showPostOnboardingOverlays && !isGameSurfaceRoute ? (
+          {rootSurfaceState.showPostOnboardingOverlays &&
+          !isGameSurfaceRoute ? (
             <>
               <MobilePromptTrigger />
               <OnboardingTour />
@@ -422,7 +417,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         />
       </head>
       <body>
-        <div id="splash-screen" aria-hidden="true" style={{ display: 'none' }} />
+        <div
+          id="splash-screen"
+          aria-hidden="true"
+          style={{ display: 'none' }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: wrapInlineScript(`
