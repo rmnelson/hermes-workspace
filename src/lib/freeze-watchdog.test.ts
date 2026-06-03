@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   clearFreezeDiagnostics,
+  dismissLastFreezeReport,
   getLastFreezeReport,
+  isLastFreezeReportDismissed,
   mark,
   recordReactError,
   reportPriorFreeze,
@@ -276,5 +278,50 @@ describe('durable last-freeze report', () => {
     expect(getLastFreezeReport()).not.toBeNull()
     clearFreezeDiagnostics()
     expect(getLastFreezeReport()).toBeNull()
+  })
+
+  it('dismiss hides the report from the banner but PRESERVES the data', () => {
+    localStorage.setItem(
+      `${NS}err:crashtab`,
+      JSON.stringify({
+        ts: Date.now(),
+        name: 'TypeError',
+        message: 'prevDeps is undefined',
+        componentStack: '\n    at WorkspaceShell',
+        domNodes: 48000,
+      }),
+    )
+    reportPriorFreeze()
+    const reportId = getLastFreezeReport()?.reportedAt
+    expect(typeof reportId).toBe('number')
+    expect(isLastFreezeReportDismissed()).toBe(false)
+
+    dismissLastFreezeReport()
+
+    // The banner should treat it as dismissed...
+    expect(isLastFreezeReportDismissed()).toBe(true)
+    // ...but the underlying diagnostic must STILL be retrievable for debugging.
+    expect(getLastFreezeReport()).not.toBeNull()
+    expect(
+      (getLastFreezeReport()?.reactError as { message?: string })?.message,
+    ).toContain('prevDeps')
+  })
+
+  it('a NEW freeze after a dismiss is shown again (dismiss is per-report)', () => {
+    localStorage.setItem(
+      `${NS}loop:tab1`,
+      JSON.stringify({ ts: Date.now(), component: 'A' }),
+    )
+    reportPriorFreeze()
+    dismissLastFreezeReport()
+    expect(isLastFreezeReportDismissed()).toBe(true)
+
+    // A later, distinct freeze overwrites the durable report → not dismissed.
+    localStorage.setItem(
+      `${NS}loop:tab2`,
+      JSON.stringify({ ts: Date.now() + 1000, component: 'B' }),
+    )
+    reportPriorFreeze()
+    expect(isLastFreezeReportDismissed()).toBe(false)
   })
 })

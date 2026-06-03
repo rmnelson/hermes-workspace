@@ -1,7 +1,8 @@
 import { Component } from 'react'
 import {
-  clearFreezeDiagnostics,
+  dismissLastFreezeReport,
   getLastFreezeReport,
+  isLastFreezeReportDismissed,
 } from '@/lib/freeze-watchdog'
 
 type State = {
@@ -25,11 +26,15 @@ type State = {
 export class FreezeReportBanner extends Component<unknown, State> {
   state: State = {
     report: getLastFreezeReport(),
-    dismissed: false,
+    // Respect a prior dismissal of THIS report (persisted), so reloading doesn't
+    // resurface a banner the user already closed.
+    dismissed: isLastFreezeReportDismissed(),
   }
 
   handleDismiss = () => {
-    clearFreezeDiagnostics()
+    // Marks this report dismissed but PRESERVES the diagnostic data — so the
+    // heartbeat (domNodes / maxPayloadKB) stays retrievable for debugging.
+    dismissLastFreezeReport()
     this.setState({ dismissed: true })
   }
 

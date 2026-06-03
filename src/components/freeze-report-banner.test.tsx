@@ -51,11 +51,23 @@ describe('FreezeReportBanner', () => {
     expect(screen.getByText(/1200/)).toBeTruthy()
   })
 
-  it('dismisses and clears the durable report so it does not return', () => {
+  it('dismiss hides the banner but PRESERVES the durable report for debugging', () => {
     seedLastReport()
     render(<FreezeReportBanner />)
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
     expect(screen.queryByText(/stopped responding/i)).toBeNull()
-    expect(localStorage.getItem(`${NS}last`)).toBeNull()
+    // Data must remain — dismissing must not destroy the heartbeat we need.
+    expect(localStorage.getItem(`${NS}last`)).not.toBeNull()
+  })
+
+  it('does not re-show a report that was already dismissed (persists across reload)', () => {
+    seedLastReport()
+    // First mount + dismiss.
+    const first = render(<FreezeReportBanner />)
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    first.unmount()
+    // Simulate a reload: a fresh banner instance reads persisted state.
+    render(<FreezeReportBanner />)
+    expect(screen.queryByText(/stopped responding/i)).toBeNull()
   })
 })

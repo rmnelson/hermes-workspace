@@ -54,6 +54,8 @@ function key(kind: string, id: string = tabId()): string {
 
 /** Durable, non-tab-scoped key holding the most recent freeze report. */
 const LAST_KEY = `${NS}last`
+/** Marker holding the `reportedAt` of the last report the user dismissed. */
+const LAST_DISMISSED_KEY = `${NS}last-dismissed`
 
 function safeSet(k: string, v: string): void {
   try {
@@ -288,6 +290,8 @@ export type FreezeReport = {
   longTask: unknown
   reactError: unknown
   breadcrumbs: string
+  /** The frozen tab's own event timestamp — stable identity for dismissal. */
+  freezeTs?: number
 }
 
 /**
@@ -410,6 +414,9 @@ export function reportPriorFreeze(): FreezeReport | null {
     longTask: best.entry.lt ?? null,
     reactError: best.entry.err ?? null,
     breadcrumbs: best.entry.bc ?? '',
+    // The freeze's own timestamp — distinct per freeze (unlike reportedAt, which
+    // is Date.now() at report time and can collide). Used as the dismissal key.
+    freezeTs: best.ts,
   }
   // Durable copy: the per-tab source records above are consumed (removed) so a
   // freeze isn't re-reported on every load, and the console line is easily lost
@@ -446,9 +453,45 @@ export function getLastFreezeReport():
   }
 }
 
+/**
+ * Mark the current durable report as dismissed (banner won't show it again),
+ * WITHOUT deleting the diagnostic — so it stays retrievable via
+ * `getLastFreezeReport()` / the console for later debugging. Keyed by the
+ * report's `reportedAt`, so a later, distinct freeze is shown again.
+ *
+ * This is deliberately NOT `clearFreezeDiagnostics()`: dismissing the banner used
+ * to wipe the data, which repeatedly lost the exact heartbeat (domNodes /
+ * maxPayloadKB) we needed to diagnose a slow/frozen tab.
+ */
+function reportIdentity(
+  report: FreezeReport & { reportedAt?: number },
+): string {
+  // Prefer the freeze's own timestamp (distinct per freeze); fall back to
+  // reportedAt for any older durable copy written before freezeTs existed.
+  return String(report.freezeTs ?? report.reportedAt ?? '')
+}
+
+export function dismissLastFreezeReport(): void {
+  if (typeof window === 'undefined') return
+  const report = getLastFreezeReport()
+  if (!report) return
+  safeSet(LAST_DISMISSED_KEY, reportIdentity(report))
+}
+
+/** Whether the current durable report has already been dismissed by the user. */
+export function isLastFreezeReportDismissed(): boolean {
+  if (typeof window === 'undefined') return false
+  const report = getLastFreezeReport()
+  if (!report) return false
+  const dismissed = safeGet(LAST_DISMISSED_KEY)
+  if (dismissed === null) return false
+  return dismissed === reportIdentity(report)
+}
+
 /** Clear this tab's saved diagnostics and the durable last-freeze report. */
 export function clearFreezeDiagnostics(): void {
   if (typeof window === 'undefined') return
   clearOwnRecords()
   safeRemove(LAST_KEY)
+  safeRemove(LAST_DISMISSED_KEY)
 }
